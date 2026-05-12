@@ -1,0 +1,26 @@
+FRONTEND FEATURE SPECIFICATION: TALENTFLOW ERP (HR MODULE)
+
+1. CORE DASHBOARD & NAVIGATION
+- Sidebar Navigation: Quick links to Employee Directory, Recruitment, Company Documents, and AI Assistant.
+- Summary Widgets: Visual tiles showing total employee count, active job openings, and recent document uploads.
+- Search Bar: Global search to find employees or documents instantly.
+
+2. EMPLOYEE DIRECTORY (CRUD Interface)
+- Employee Table/Grid: View all staff with pagination, sorting, and filtering (by Department, Status, or Role).
+- Profile Detail View: A dedicated page for each employee showing personal info, salary history, and department links.
+- Add/Edit Employee Modal: Clean forms with validation for onboarding new hires.
+
+3. RECRUITMENT & RESUME SCREENER (AI Feature)
+- Resume Upload Zone: Drag-and-drop area for PDF/Docx resumes.
+- Applicant Tracking List: See candidates and their AI-generated "Match Scores."
+- AI Analysis Sidebar: A panel that displays extracted skills and a summary of why the candidate fits the role (powered by LangGraph).
+
+4. KNOWLEDGE BASE & RAG CHAT
+- Policy Document Manager: Interface to upload and manage the Employee Handbook and Company Policies.
+- Floating AI Assistant: A persistent chat drawer where users can ask questions like "What is the holiday policy?" (RAG Pipeline).
+- Source Citation: Displaying which part of the PDF the AI used to generate its answer.
+
+5. SYSTEM & INTEGRATION
+- API Status Dashboard: A developer view to see live OpenAPI documentation and backend health.
+- Dark/Light Mode Support: Standard UI/UX preference toggle.
+- Responsive Design: Fully functional on Mobile, Tablet, and Desktop via Tailwind CSS.
