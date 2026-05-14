@@ -1,0 +1,1 @@
+This folder contains the Employee Directory page for the HR module.

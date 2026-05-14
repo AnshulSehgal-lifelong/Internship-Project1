@@ -1,0 +1,1 @@
+This folder contains the Dashboard page for the HR module.

@@ -1,5 +1,17 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Feature Modules
+
+This project is organized into modular feature folders under `app/features/`:
+
+- **Dashboard**: Main dashboard with navigation and summary widgets ([features/dashboard/](app/features/dashboard/))
+- **Employee Directory**: CRUD interface for employees ([features/employee-directory/](app/features/employee-directory/))
+- **Recruitment & Resume Screener**: AI-powered applicant tracking ([features/recruitment/](app/features/recruitment/))
+- **Knowledge Base & RAG Chat**: Document manager and AI assistant ([features/knowledge-base/](app/features/knowledge-base/))
+- **System & Integration**: API status, dark/light mode, responsive helpers ([features/system/](app/features/system/))
+
+Each feature folder contains a main component and a README with usage instructions.
+
 ## Getting Started
 
 First, run the development server:

@@ -1,0 +1,1 @@
+This folder contains the Knowledge Base & RAG Chat page for the HR module.

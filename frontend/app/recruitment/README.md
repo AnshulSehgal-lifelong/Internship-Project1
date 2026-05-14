@@ -1,0 +1,1 @@
+This folder contains the Recruitment & Resume Screener page for the HR module.
