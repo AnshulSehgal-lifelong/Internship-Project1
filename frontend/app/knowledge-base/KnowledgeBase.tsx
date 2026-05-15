@@ -1,20 +1,20 @@
 "use client";
 
 import React from "react";
-import { 
-  Book, 
-  FileText, 
-  Upload, 
-  MessageSquare, 
+import {
+  Book,
+  FileText,
+  Upload,
+  MessageSquare,
   Send,
   X,
   Link2,
-  AlertCircle
+  AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/lib/api";
-import { useAuth } from "@/components/auth-context";
+
 interface DocumentRecord {
   id: number;
   filename: string;
@@ -32,12 +32,13 @@ export default function KnowledgeBase() {
   const [documents, setDocuments] = React.useState<DocumentRecord[]>([]);
   const [isChatOpen, setIsChatOpen] = React.useState(false);
   const [messages, setMessages] = React.useState<ChatItem[]>([
-    { role: "assistant", content: "Hello! I'm your HR AI assistant. You can ask me anything about company policies.", source: null }
+    { role: "assistant", content: "Hello! I'm your HR AI assistant. You can ask me anything about company policies.", source: null },
   ]);
   const [input, setInput] = React.useState("");
   const [isTyping, setIsTyping] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
   React.useEffect(() => {
     async function loadDocuments() {
@@ -54,10 +55,6 @@ export default function KnowledgeBase() {
     }
     loadDocuments();
   }, []);
-
-  const { user } = useAuth();
-
-  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
   const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -80,22 +77,25 @@ export default function KnowledgeBase() {
 
   const handleSend = async () => {
     if (!input.trim()) return;
-    
-    const userMessage = { role: "user", content: input, source: null };
-    setMessages(prev => [...prev, userMessage]);
+
+    const userMessage: ChatItem = { role: "user", content: input, source: null };
+    setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setIsTyping(true);
 
     try {
       const response = await api.post<{ reply: string }>("/ai/chat", { message: input });
-      setMessages(prev => [...prev, { role: "assistant", content: response.reply, source: "Backend AI" }]);
+      setMessages((prev) => [...prev, { role: "assistant", content: response.reply, source: "Backend AI" }]);
     } catch (err) {
       console.error("Chat failed:", err);
-      setMessages(prev => [...prev, { 
-        role: "assistant", 
-        content: "Error: AI assistant is currently unavailable. Please check backend connection.",
-        source: "System Error"
-      }]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "Error: AI assistant is currently unavailable. Please check backend connection.",
+          source: "System Error",
+        },
+      ]);
     } finally {
       setIsTyping(false);
     }
@@ -116,15 +116,16 @@ export default function KnowledgeBase() {
           <h2 className="text-3xl font-bold tracking-tight">Knowledge Base</h2>
           <p className="text-muted-foreground mt-1">Access company policies and internal documentation.</p>
         </div>
-        {user?.role === "Administrator" && (
-          <>
-            <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg font-medium shadow-lg shadow-primary/20">
-              <Upload size={18} />
-              <span>Upload Policy</span>
-            </button>
-            <input ref={fileInputRef} type="file" hidden onChange={handleUpload} />
-          </>
-        )}
+        <>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg font-medium shadow-lg shadow-primary/20"
+          >
+            <Upload size={18} />
+            <span>Upload Policy</span>
+          </button>
+          <input ref={fileInputRef} type="file" hidden onChange={handleUpload} />
+        </>
       </div>
 
       {error ? (
@@ -148,9 +149,22 @@ export default function KnowledgeBase() {
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] font-bold px-2 py-1 bg-secondary rounded-lg">{doc.content_type || "document"}</span>
-                  {user?.role === "Administrator" && (
-                    <button onClick={async (e) => { e.stopPropagation(); try { await api.delete(`/documents/${doc.id}`); const updated = await api.get<DocumentRecord[]>("/documents"); setDocuments(updated || []); } catch (err) { console.error(err); setError("Could not delete document."); } }} className="text-xs text-destructive px-2 py-1 rounded-md border border-destructive/20 hover:bg-destructive/10">Delete</button>
-                  )}
+                  <button
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      try {
+                        await api.delete(`/documents/${doc.id}`);
+                        const updated = await api.get<DocumentRecord[]>("/documents");
+                        setDocuments(updated || []);
+                      } catch (err) {
+                        console.error(err);
+                        setError("Could not delete document.");
+                      }
+                    }}
+                    className="text-xs text-destructive px-2 py-1 rounded-md border border-destructive/20 hover:bg-destructive/10"
+                  >
+                    Delete
+                  </button>
                 </div>
               </div>
               <h4 className="font-bold mb-1 group-hover:text-primary transition-colors">{doc.filename}</h4>
@@ -171,10 +185,8 @@ export default function KnowledgeBase() {
           <Book size={32} className="text-muted-foreground" />
         </div>
         <h4 className="font-bold">Need help finding something?</h4>
-        <p className="text-sm text-muted-foreground mt-1 max-w-sm">
-          Use our AI-powered RAG assistant to get instant answers.
-        </p>
-        <button 
+        <p className="text-sm text-muted-foreground mt-1 max-w-sm">Use our AI-powered RAG assistant to get instant answers.</p>
+        <button
           onClick={() => setIsChatOpen(true)}
           className="mt-6 px-6 py-2 bg-foreground text-background rounded-xl font-medium hover:opacity-90 transition-all flex items-center gap-2"
         >
@@ -186,7 +198,7 @@ export default function KnowledgeBase() {
       <AnimatePresence>
         {isChatOpen && (
           <>
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -212,9 +224,7 @@ export default function KnowledgeBase() {
               <div className="flex-1 overflow-y-auto p-6 space-y-6">
                 {messages.map((m, i) => (
                   <div key={i} className={cn("flex flex-col max-w-[85%]", m.role === "user" ? "ml-auto items-end" : "mr-auto items-start")}>
-                    <div className={cn("p-3 rounded-2xl text-xs leading-relaxed", m.role === "user" ? "bg-primary text-primary-foreground rounded-tr-none" : "bg-secondary rounded-tl-none")}>
-                      {m.content}
-                    </div>
+                    <div className={cn("p-3 rounded-2xl text-xs leading-relaxed", m.role === "user" ? "bg-primary text-primary-foreground rounded-tr-none" : "bg-secondary rounded-tl-none")}>{m.content}</div>
                     {m.source && (
                       <div className="mt-2 flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-600 text-[10px] font-bold">
                         <Link2 size={10} />
@@ -228,12 +238,12 @@ export default function KnowledgeBase() {
 
               <div className="p-6 border-t border-border">
                 <div className="flex items-center gap-2 p-2 rounded-2xl bg-secondary border border-border">
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                    placeholder="Ask a question..." 
+                    onKeyDown={(e) => e.key === "Enter" && handleSend()}
+                    placeholder="Ask a question..."
                     className="flex-1 bg-transparent border-none focus:ring-0 text-xs px-2"
                   />
                   <button onClick={handleSend} disabled={isTyping} className="p-2 bg-primary text-primary-foreground rounded-xl hover:opacity-90 disabled:opacity-50">

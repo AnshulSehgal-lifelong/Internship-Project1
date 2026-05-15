@@ -30,15 +30,6 @@ export default function Sidebar() {
 
   const initials = user ? `${user.first_name[0]}${user.last_name[0]}` : "??";
 
-  const visibleItems = React.useMemo(() => {
-    if (!user) return [];
-    const role = user.role || "";
-    if (role === "Administrator") return navItems;
-    if (role === "HR") return navItems.filter(i => ["Employee Directory", "Recruitment", "Knowledge Base", "Dashboard"].includes(i.name));
-    // other employees: only Knowledge Base and Profile (Profile will be added)
-    return navItems.filter(i => ["Knowledge Base", "Dashboard"].includes(i.name)).concat([{ name: "Profile", href: "/profile", icon: Users }]);
-  }, [user]);
-
   return (
     <aside className="w-64 h-full border-r border-border bg-card/50 backdrop-blur-xl flex flex-col">
       <div className="p-6">
@@ -53,7 +44,7 @@ export default function Sidebar() {
         </div>
 
         <nav className="space-y-1">
-          {visibleItems.map((item) => {
+          {navItems.map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
             return (
               <Link
@@ -90,7 +81,7 @@ export default function Sidebar() {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold truncate">{user?.first_name} {user?.last_name}</p>
-            <p className="text-xs text-muted-foreground truncate">{user?.role}</p>
+            <p className="text-xs text-muted-foreground truncate">Signed in</p>
           </div>
         </div>
         <button 

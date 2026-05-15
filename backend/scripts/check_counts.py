@@ -9,7 +9,7 @@ from sqlalchemy import select, func
 from app.db.session import SessionLocal
 from app.models.user import User
 from app.models.department import Department
-from app.models.employee import Employee
+from app.models.user import User
 from app.models.job_opening import JobOpening
 from app.models.document import Document
 
@@ -18,7 +18,6 @@ async def get_counts():
         models = [
             ("Users", User),
             ("Departments", Department),
-            ("Employees", Employee),
             ("JobOpenings", JobOpening),
             ("Documents", Document)
         ]

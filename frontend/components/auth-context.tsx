@@ -39,15 +39,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     async function loadUser() {
-      const token = localStorage.getItem("token");
-      if (token) {
-        try {
-          const userData = await api.get<User>("/auth/me");
+      const token = typeof window !== "undefined" ? sessionStorage.getItem("token") : null;
+      if (!token) {
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        const userData = await api.get<User>("/auth/me");
+        if (userData) {
           setUser(userData);
-        } catch (error) {
-          console.error("Failed to load user:", error);
-          localStorage.removeItem("token");
+        } else {
+          api.setToken(null);
         }
+      } catch (error) {
+        console.error("Failed to load user:", error);
+        api.setToken(null);
       }
       setIsLoading(false);
     }
@@ -67,7 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (formData: FormData) => {
     const data = await api.login(formData);
-    localStorage.setItem("token", data.access_token);
+    api.setToken(data.access_token);
     const userData = await api.get<User>("/auth/me");
     setUser(userData);
     router.push("/dashboard");
@@ -82,8 +89,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await login(formData);
   };
 
-  const logout = () => {
-    localStorage.removeItem("token");
+  const logout = async () => {
+    await api.logout().catch(() => undefined);
+    api.setToken(null);
     setUser(null);
     router.push("/login");
   };

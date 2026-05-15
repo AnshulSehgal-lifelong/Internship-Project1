@@ -9,6 +9,6 @@ class Department(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     name: Mapped[str] = mapped_column(String(120), unique=True, index=True, nullable=False)
-    manager_id: Mapped[int | None] = mapped_column(ForeignKey("employees.id"), nullable=True)
+    manager_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
 
-    employees = relationship("Employee", back_populates="department", foreign_keys="Employee.department_id")
+    employees = relationship("User", back_populates="department", foreign_keys="User.department_id")

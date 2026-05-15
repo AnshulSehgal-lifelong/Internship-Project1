@@ -14,7 +14,6 @@ import {
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
-import { useAuth } from "@/components/auth-context";
 
 interface EmployeeRecord {
   id: number;
@@ -41,7 +40,6 @@ export default function EmployeeDirectory() {
   const [search, setSearch] = React.useState("");
   const [form, setForm] = React.useState({ name: "", email: "", department_id: "", role: "", salary: "", hire_date: "" });
   const [isSaving, setIsSaving] = React.useState(false);
-  const { user } = useAuth();
 
   const loadEmployees = React.useCallback(async () => {
     try {
@@ -131,8 +129,7 @@ export default function EmployeeDirectory() {
         </div>
       </div>
 
-      {user?.role === "Administrator" && (
-        <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-6 gap-3 p-4 rounded-2xl bg-card border border-border">
+      <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-6 gap-3 p-4 rounded-2xl bg-card border border-border">
         <input name="name" value={form.name} onChange={handleChange} required placeholder="Full name" className="md:col-span-2 h-11 px-4 rounded-lg bg-secondary/50 border-none text-sm" />
         <input name="email" value={form.email} onChange={handleChange} required type="email" placeholder="Email" className="h-11 px-4 rounded-lg bg-secondary/50 border-none text-sm" />
         <input name="role" value={form.role} onChange={handleChange} placeholder="Role" className="h-11 px-4 rounded-lg bg-secondary/50 border-none text-sm" />
@@ -145,8 +142,7 @@ export default function EmployeeDirectory() {
         </button>
         <input name="salary" value={form.salary} onChange={handleChange} type="number" placeholder="Salary" className="h-11 px-4 rounded-lg bg-secondary/50 border-none text-sm" />
         <input name="hire_date" value={form.hire_date} onChange={handleChange} type="date" className="h-11 px-4 rounded-lg bg-secondary/50 border-none text-sm" />
-        </form>
-      )}
+      </form>
 
       <div className="flex flex-col md:flex-row items-center gap-4 p-4 rounded-2xl bg-card border border-border">
         <div className="relative flex-1 w-full">
@@ -221,11 +217,9 @@ export default function EmployeeDirectory() {
                         <button className="p-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors">
                           <MoreHorizontal size={18} />
                         </button>
-                        {user?.role === "Administrator" && (
-                          <button onClick={() => handleDelete(employee.id)} className="px-3 py-2 text-xs font-medium rounded-lg border border-destructive/20 text-destructive hover:bg-destructive/10 transition-colors">
-                            Delete
-                          </button>
-                        )}
+                        <button onClick={() => handleDelete(employee.id)} className="px-3 py-2 text-xs font-medium rounded-lg border border-destructive/20 text-destructive hover:bg-destructive/10 transition-colors">
+                          Delete
+                        </button>
                       </div>
                     </td>
                   </motion.tr>

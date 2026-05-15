@@ -10,7 +10,6 @@ import {
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/lib/api";
-import { useAuth } from "@/components/auth-context";
 
 interface JobOpeningRecord {
   id: number;
@@ -26,7 +25,6 @@ export default function Recruitment() {
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [form, setForm] = React.useState({ title: "", description: "", requirements: "" });
-  const { user } = useAuth();
 
   React.useEffect(() => {
     async function loadOpenings() {
@@ -91,17 +89,15 @@ export default function Recruitment() {
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         <div className="lg:col-span-8 flex flex-col gap-6">
-          {(user?.role === "Administrator" || user?.role === "HR") && (
-            <form onSubmit={handleSubmit} className="p-6 border-2 border-dashed border-primary/20 bg-primary/5 rounded-3xl space-y-4">
-              <h4 className="text-lg font-bold">Create Opening</h4>
-              <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Title" className="w-full h-11 px-4 rounded-xl bg-background border border-border" />
-              <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Description" className="w-full min-h-28 p-4 rounded-xl bg-background border border-border" />
-              <textarea value={form.requirements} onChange={(e) => setForm({ ...form, requirements: e.target.value })} placeholder="Requirements" className="w-full min-h-24 p-4 rounded-xl bg-background border border-border" />
-              <button type="submit" disabled={isSaving} className="px-4 py-2 bg-primary text-primary-foreground rounded-xl font-bold disabled:opacity-50">
-                {isSaving ? "Saving..." : "Save Opening"}
-              </button>
-            </form>
-          )}
+          <form onSubmit={handleSubmit} className="p-6 border-2 border-dashed border-primary/20 bg-primary/5 rounded-3xl space-y-4">
+            <h4 className="text-lg font-bold">Create Opening</h4>
+            <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Title" className="w-full h-11 px-4 rounded-xl bg-background border border-border" />
+            <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Description" className="w-full min-h-28 p-4 rounded-xl bg-background border border-border" />
+            <textarea value={form.requirements} onChange={(e) => setForm({ ...form, requirements: e.target.value })} placeholder="Requirements" className="w-full min-h-24 p-4 rounded-xl bg-background border border-border" />
+            <button type="submit" disabled={isSaving} className="px-4 py-2 bg-primary text-primary-foreground rounded-xl font-bold disabled:opacity-50">
+              {isSaving ? "Saving..." : "Save Opening"}
+            </button>
+          </form>
 
           <div className="flex-1 border border-border bg-card rounded-3xl overflow-auto flex flex-col min-h-75">
             <div className="p-4 border-b border-border">
@@ -180,9 +176,7 @@ export default function Recruitment() {
                 </div>
 
                 <div className="p-6 border-t border-border grid grid-cols-2 gap-3">
-                  {(user?.role === "Administrator" || user?.role === "HR") && (
-                    <button onClick={() => handleDelete(selectedOpening.id)} className="px-4 py-2 border border-border rounded-xl text-sm font-bold">Delete</button>
-                  )}
+                  <button onClick={() => handleDelete(selectedOpening.id)} className="px-4 py-2 border border-border rounded-xl text-sm font-bold">Delete</button>
                   <button className="px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-bold">Review</button>
                 </div>
               </motion.div>

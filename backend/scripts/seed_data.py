@@ -20,7 +20,8 @@ from sqlalchemy import select
 from app.db.session import AsyncSessionLocal
 from app.models.department import Department
 from app.models.document import Document
-from app.models.employee import Employee
+# Employee table removed; employees are now stored in `users` table via User model
+from app.models.user import User
 from app.models.job_opening import JobOpening
 from app.models.user import User
 
@@ -46,27 +47,33 @@ async def main() -> None:
         await session.flush()
 
         # Sample employees for dashboard, directory, and auth testing.
-        alice = (await session.execute(select(Employee).where(Employee.email == "alice.johnson@talentflow.local"))).scalar_one_or_none()
+        alice = (await session.execute(select(User).where(User.email == "alice.johnson@talentflow.local"))).scalar_one_or_none()
         if alice is None:
-            alice = Employee(
-                name="Alice Johnson",
+            alice = User(
+                first_name="Alice",
+                last_name="Johnson",
+                name="Alice Johnson" if False else None,
                 email="alice.johnson@talentflow.local",
-                department_id=engineering.id,
                 role="Senior Backend Engineer",
+                department_id=engineering.id,
                 salary=98000,
                 hire_date=date(2024, 2, 12),
+                hashed_password=hash_password("Employee@123"),
             )
             session.add(alice)
 
-        bob = (await session.execute(select(Employee).where(Employee.email == "bob.singh@talentflow.local"))).scalar_one_or_none()
+        bob = (await session.execute(select(User).where(User.email == "bob.singh@talentflow.local"))).scalar_one_or_none()
         if bob is None:
-            bob = Employee(
-                name="Bob Singh",
+            bob = User(
+                first_name="Bob",
+                last_name="Singh",
+                name="Bob Singh" if False else None,
                 email="bob.singh@talentflow.local",
-                department_id=hr.id,
                 role="HR Manager",
+                department_id=hr.id,
                 salary=86000,
                 hire_date=date(2023, 9, 4),
+                hashed_password=hash_password("Employee@123"),
             )
             session.add(bob)
 
