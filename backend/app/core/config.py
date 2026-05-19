@@ -6,7 +6,7 @@ load_dotenv()
 
 class Settings(BaseSettings):
     app_name: str = os.getenv("APP_NAME", "TalentFlow API")
-    api_v1_prefix: str = "/api/v1"
+    api_v1_prefix: str = "/api"
     database_url: str = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:password@localhost:5432/talentflow")
     jwt_secret_key: str = os.getenv("JWT_SECRET_KEY", "change-me-in-env")
     jwt_algorithm: str = os.getenv("JWT_ALGORITHM", "HS256")

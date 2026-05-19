@@ -17,17 +17,10 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   login: (formData: FormData) => Promise<void>;
-  signup: (data: SignupData) => Promise<void>;
   logout: () => void;
 }
 
-interface SignupData {
-  first_name: string;
-  last_name: string;
-  email: string;
-  password: string;
-  role: string;
-}
+
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -39,14 +32,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     async function loadUser() {
-      const token = localStorage.getItem("token");
+      const token = sessionStorage.getItem("token") ?? localStorage.getItem("token");
       if (token) {
+        api.setToken(token);
         try {
           const userData = await api.get<User>("/auth/me");
-          setUser(userData);
+          setUser(userData ?? null);
         } catch (error) {
           console.error("Failed to load user:", error);
-          localStorage.removeItem("token");
+          api.setToken(null);
+          setUser(null);
         }
       }
       setIsLoading(false);
@@ -56,7 +51,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!isLoading) {
-      const isPublicPage = pathname === "/login" || pathname === "/signup";
+      const isPublicPage = pathname === "/login";
       if (!user && !isPublicPage) {
         router.push("/login");
       } else if (user && isPublicPage) {
@@ -67,29 +62,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (formData: FormData) => {
     const data = await api.login(formData);
-    localStorage.setItem("token", data.access_token);
+    api.setToken(data.access_token);
     const userData = await api.get<User>("/auth/me");
-    setUser(userData);
+    setUser(userData ?? null);
     router.push("/dashboard");
   };
 
-  const signup = async (signupData: SignupData) => {
-    await api.signup(signupData);
-    // After signup, automatically login
-    const formData = new FormData();
-    formData.append("username", signupData.email);
-    formData.append("password", signupData.password);
-    await login(formData);
-  };
 
-  const logout = () => {
-    localStorage.removeItem("token");
-    setUser(null);
-    router.push("/login");
+
+  const logout = async () => {
+    try {
+      await api.post("/auth/logout");
+    } catch (err) {
+      console.error("Failed to logout on backend:", err);
+    } finally {
+      api.setToken(null);
+      setUser(null);
+      router.push("/login");
+    }
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, signup, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

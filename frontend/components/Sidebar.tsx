@@ -7,6 +7,8 @@ import {
   LayoutDashboard, 
   Users, 
   UserPlus, 
+  Building2,
+  History,
   BookOpen, 
   Settings, 
   ChevronRight,
@@ -18,7 +20,9 @@ import { useAuth } from "@/components/auth-context";
 
 const navItems = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { name: "Activity Logs", href: "/activity-logs", icon: History },
   { name: "Employee Directory", href: "/employee-directory", icon: Users },
+  { name: "Departments", href: "/departments", icon: Building2 },
   { name: "Recruitment", href: "/recruitment", icon: UserPlus },
   { name: "Knowledge Base", href: "/knowledge-base", icon: BookOpen },
   { name: "System", href: "/system", icon: Settings },
@@ -28,15 +32,17 @@ export default function Sidebar() {
   const pathname = usePathname();
   const { user, logout } = useAuth();
 
-  const initials = user ? `${user.first_name[0]}${user.last_name[0]}` : "??";
+  const initials = user
+    ? `${(user.first_name?.[0] ?? "").toUpperCase()}${(user.last_name?.[0] ?? "").toUpperCase()}` || "??"
+    : "??";
 
   const visibleItems = React.useMemo(() => {
     if (!user) return [];
     const role = user.role || "";
     if (role === "Administrator") return navItems;
-    if (role === "HR") return navItems.filter(i => ["Employee Directory", "Recruitment", "Knowledge Base", "Dashboard"].includes(i.name));
-    // other employees: only Knowledge Base and Profile (Profile will be added)
-    return navItems.filter(i => ["Knowledge Base", "Dashboard"].includes(i.name)).concat([{ name: "Profile", href: "/profile", icon: Users }]);
+    if (role === "HR") return navItems.filter(i => ["Activity Logs", "Employee Directory", "Recruitment", "Knowledge Base", "Dashboard"].includes(i.name));
+    // other employees: only Knowledge Base, dashboard, logs, and profile
+    return navItems.filter(i => ["Activity Logs", "Knowledge Base", "Dashboard"].includes(i.name)).concat([{ name: "Profile", href: "/profile", icon: Users }]);
   }, [user]);
 
   return (

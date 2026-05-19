@@ -6,6 +6,11 @@ class Token(ORMBaseModel):
     token_type: str = "bearer"
 
 
+class LoginRequest(ORMBaseModel):
+    email: str
+    password: str
+
+
 class UserCreate(ORMBaseModel):
     first_name: str | None = None
     last_name: str | None = None

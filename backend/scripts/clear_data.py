@@ -13,7 +13,7 @@ from sqlalchemy import text
 from app.db.session import AsyncSessionLocal
 
 
-TABLES = ["documents", "job_openings", "employees", "departments", "users"]
+TABLES = ["documents", "job_openings", "departments", "users"]
 
 
 async def main() -> None:
