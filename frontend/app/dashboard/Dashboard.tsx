@@ -1,16 +1,17 @@
 "use client";
 
 import React from "react";
-import { 
-  Users, 
-  Briefcase, 
-  FileText, 
-  TrendingUp, 
+import {
+  Users,
+  Briefcase,
+  FileText,
+  TrendingUp,
   ArrowUpRight,
+  History,
   UserCheck,
   Clock,
   Plus,
-  AlertCircle
+  AlertCircle,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -18,14 +19,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/components/auth-context";
 import { useRouter } from "next/navigation";
 
-interface EmployeeRecord {
-  id: number;
-  first_name?: string | null;
-  last_name?: string | null;
-  name?: string | null;
-  role?: string | null;
-  hire_date?: string | null;
-}
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface DashboardCard {
   name: string;
@@ -34,6 +28,7 @@ interface DashboardCard {
   bg: string;
   color: string;
   change: string;
+  href?: string;
 }
 
 interface RecentActivity {
@@ -44,29 +39,152 @@ interface RecentActivity {
   time: string;
 }
 
-const container = {
-  show: {
-    transition: {
-      staggerChildren: 0.1
-    }
-  }
-};
-
-const item = {
-  hidden: { opacity: 0, y: 20 },
-  show: { opacity: 1, y: 0 }
-};
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const ICON_MAP: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
   Users,
   Briefcase,
   FileText,
-  UserCheck
+  UserCheck,
 };
+
+const QUICK_LINKS = [
+  { title: "Activity Logs", desc: "Review the full activity feed", icon: History, href: "/activity-logs" },
+  { title: "Company Handbook", desc: "View all policies", icon: FileText, href: "/knowledge-base" },
+  { title: "Open Openings", desc: "Manage job posts", icon: Briefcase, href: "/recruitment" },
+  { title: "Team Directory", desc: "Browse employees", icon: Users, href: "/employee-directory" },
+];
+
+// ─── Animation variants ───────────────────────────────────────────────────────
+
+const containerVariants = {
+  show: { transition: { staggerChildren: 0.08 } },
+};
+
+const cardVariants = {
+  hidden: { opacity: 0, y: 16 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: "easeOut" as const } },
+};
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function StatCard({ stat }: { stat: DashboardCard }) {
+  const router = useRouter();
+  const Icon = ICON_MAP[stat.icon] ?? Users;
+
+  return (
+    <motion.div
+      variants={cardVariants}
+      onClick={stat.href ? () => router.push(stat.href!) : undefined}
+      role={stat.href ? "button" : undefined}
+      tabIndex={stat.href ? 0 : undefined}
+      className={cn(
+        "group relative overflow-hidden rounded-2xl border border-border bg-card p-6 transition-all duration-200",
+        stat.href && "cursor-pointer hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/5"
+      )}
+    >
+      {/* Subtle background accent */}
+      <div className={cn("absolute -right-4 -top-4 h-20 w-20 rounded-full opacity-10 blur-2xl", stat.bg)} />
+
+      <div className="flex items-start justify-between">
+        <div className={cn("rounded-xl p-2.5", stat.bg)}>
+          <Icon className={stat.color} size={20} />
+        </div>
+        <span className="flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-600">
+          <TrendingUp size={10} />
+          {stat.change}
+        </span>
+      </div>
+
+      <div className="mt-5">
+        <p className="text-sm text-muted-foreground">{stat.name}</p>
+        <p className="mt-1 text-2xl font-bold tracking-tight">{stat.value}</p>
+      </div>
+    </motion.div>
+  );
+}
+
+function ActivityRow({ act }: { act: RecentActivity }) {
+  const router = useRouter();
+
+  return (
+    <button
+      onClick={() => router.push("/activity-logs")}
+      className="flex w-full items-center gap-4 border-b border-border/60 px-5 py-3.5 text-left transition-colors last:border-0 hover:bg-secondary/40"
+    >
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-bold">
+        {act.initials}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium">
+          {act.user}{" "}
+          <span className="font-normal text-muted-foreground">{act.action}</span>
+        </p>
+        <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+          <Clock size={11} />
+          {act.time}
+        </p>
+      </div>
+      <ArrowUpRight size={14} className="shrink-0 text-muted-foreground/40" />
+    </button>
+  );
+}
+
+function QuickLink({ link }: { link: typeof QUICK_LINKS[number] }) {
+  const router = useRouter();
+
+  return (
+    <button
+      onClick={() => router.push(link.href)}
+      className="group flex items-center gap-4 rounded-xl border border-border bg-card p-4 text-left transition-all hover:bg-secondary/40"
+    >
+      <div className="rounded-lg bg-secondary p-2.5 transition-colors group-hover:bg-primary/10 group-hover:text-primary">
+        <link.icon size={18} />
+      </div>
+      <div>
+        <p className="text-sm font-semibold">{link.title}</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">{link.desc}</p>
+      </div>
+    </button>
+  );
+}
+
+// ─── Loading / Error states ───────────────────────────────────────────────────
+
+function LoadingState() {
+  return (
+    <div className="flex h-full items-center justify-center">
+      <div className="h-7 w-7 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+    </div>
+  );
+}
+
+function ErrorState({ message }: { message: string }) {
+  return (
+    <div className="flex h-[60vh] flex-col items-center justify-center gap-4 text-center">
+      <div className="rounded-full bg-destructive/10 p-4 text-destructive">
+        <AlertCircle size={40} />
+      </div>
+      <div>
+        <h3 className="text-lg font-semibold">Connection error</h3>
+        <p className="mt-1 text-sm text-muted-foreground">{message}</p>
+      </div>
+      <button
+        onClick={() => window.location.reload()}
+        className="rounded-xl bg-primary px-5 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
+      >
+        Try again
+      </button>
+    </div>
+  );
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
 
 export default function Dashboard() {
   const { user } = useAuth();
   const router = useRouter();
+
   const [stats, setStats] = React.useState<DashboardCard[]>([]);
   const [activity, setActivity] = React.useState<RecentActivity[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -75,27 +193,20 @@ export default function Dashboard() {
   React.useEffect(() => {
     async function loadData() {
       try {
-        const [employees, departments, jobs] = await Promise.all([
-          api.get<EmployeeRecord[]>("/employees"),
-          api.get<{ id: number }[]>("/departments"),
-          api.get<{ id: number }[]>("/job-openings")
-        ]);
-        const employeeCount = employees.length;
-        const departmentCount = departments.length;
-        const jobCount = jobs.length;
+        const data = await api.get<{
+          employeeCount: number;
+          departmentCount: number;
+          jobCount: number;
+          recentActivity: RecentActivity[];
+        }>("/dashboard/summary");
+
         setStats([
-          { name: "Employees", value: employeeCount, icon: "Users", bg: "bg-blue-500/10", color: "text-blue-500", change: `${employeeCount} total` },
-          { name: "Departments", value: departmentCount, icon: "Briefcase", bg: "bg-violet-500/10", color: "text-violet-500", change: `${departmentCount} active` },
-          { name: "Open Jobs", value: jobCount, icon: "FileText", bg: "bg-emerald-500/10", color: "text-emerald-500", change: `${jobCount} openings` },
-          { name: "Welcome", value: user?.first_name || "HR", icon: "UserCheck", bg: "bg-amber-500/10", color: "text-amber-500", change: "Signed in" },
+          { name: "Employees", value: data.employeeCount, icon: "Users", bg: "bg-blue-500/10", color: "text-blue-500", change: `${data.employeeCount} total`, href: "/employee-directory" },
+          { name: "Departments", value: data.departmentCount, icon: "Briefcase", bg: "bg-violet-500/10", color: "text-violet-500", change: `${data.departmentCount} managed`, href: "/departments" },
+          { name: "Open Jobs", value: data.jobCount, icon: "FileText", bg: "bg-emerald-500/10", color: "text-emerald-500", change: `${data.jobCount} openings`, href: "/recruitment" },
+          { name: "Welcome", value: user?.first_name ?? "HR", icon: "UserCheck", bg: "bg-amber-500/10", color: "text-amber-500", change: "Signed in" },
         ]);
-        setActivity(employees.slice(0, 5).map((employee, index) => ({
-          id: employee.id,
-          initials: `${employee.first_name?.[0] || employee.name?.[0] || "E"}${employee.last_name?.[0] || ""}`,
-          user: `${employee.first_name || employee.name} ${employee.last_name || ""}`.trim(),
-          action: `joined the ${employee.role || "team"}`,
-          time: employee.hire_date || `Recent hire #${index + 1}`,
-        })));
+        setActivity(data.recentActivity ?? []);
         setError(null);
       } catch (err) {
         console.error("Failed to fetch dashboard data:", err);
@@ -104,143 +215,88 @@ export default function Dashboard() {
         setIsLoading(false);
       }
     }
-    loadData();
-  }, []);
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
-  }
+    void loadData();
+  }, [user?.first_name]);
 
-  if (error) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[60vh] text-center space-y-4">
-        <div className="p-4 rounded-full bg-destructive/10 text-destructive">
-          <AlertCircle size={48} />
-        </div>
-        <div>
-          <h3 className="text-xl font-bold">Connection Error</h3>
-          <p className="text-muted-foreground mt-1">{error}</p>
-        </div>
-        <button 
-          onClick={() => window.location.reload()}
-          className="px-6 py-2 bg-primary text-primary-foreground rounded-xl font-medium"
-        >
-          Try Again
-        </button>
-      </div>
-    );
-  }
+  if (isLoading) return <LoadingState />;
+  if (error) return <ErrorState message={error} />;
 
   return (
     <div className="space-y-8">
-      <div className="flex items-end justify-between">
+      {/* Page header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Welcome back, {user?.first_name}</h2>
-          <p className="text-muted-foreground mt-1">Here is what&apos;s happening with your workforce today.</p>
+          <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Overview</p>
+          <h2 className="mt-1 text-3xl font-bold tracking-tight">
+            Welcome back, {user?.first_name}
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            A quick view of the current workforce and recruiting pipeline.
+          </p>
         </div>
-        <button onClick={() => router.push("/employee-directory")} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg font-medium hover:opacity-90 transition-opacity shadow-lg shadow-primary/20">
-          <Plus size={20} />
-          <span>New Hire</span>
-        </button>
+
+        {user?.role === "Administrator" && (
+          <button
+            onClick={() => router.push("/employee-directory")}
+            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 hover:opacity-90 active:scale-95 transition-all"
+          >
+            <Plus size={16} />
+            New hire
+          </button>
+        )}
       </div>
 
-      <motion.div 
-        variants={container}
+      {/* Stat cards */}
+      <motion.div
+        variants={containerVariants}
         initial="hidden"
         animate="show"
-        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
+        className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
       >
-        {stats.length > 0 ? stats.map((stat) => {
-          const Icon = ICON_MAP[stat.icon] || Users;
-          return (
-            <motion.div
-              key={stat.name}
-              variants={item}
-              className="p-6 rounded-2xl bg-card border border-border hover:shadow-xl hover:shadow-primary/5 transition-all group"
-            >
-              <div className="flex items-start justify-between">
-                <div className={cn("p-3 rounded-xl", stat.bg)}>
-                  <Icon className={stat.color} size={24} />
-                </div>
-                <div className="flex items-center gap-1 text-xs font-medium text-emerald-500 bg-emerald-500/10 px-2 py-1 rounded-full">
-                  <TrendingUp size={12} />
-                  <span>{stat.change}</span>
-                </div>
-              </div>
-              <div className="mt-4">
-                <p className="text-sm font-medium text-muted-foreground">{stat.name}</p>
-                <h3 className="text-2xl font-bold mt-1">{stat.value}</h3>
-              </div>
-            </motion.div>
-          );
-        }) : (
-          <div className="col-span-full p-12 text-center border-2 border-dashed border-border rounded-3xl">
-            <p className="text-muted-foreground">No statistics available.</p>
+        {stats.length > 0 ? (
+          stats.map((stat) => <StatCard key={stat.name} stat={stat} />)
+        ) : (
+          <div className="col-span-full rounded-2xl border-2 border-dashed border-border p-12 text-center text-sm text-muted-foreground">
+            No statistics available.
           </div>
         )}
       </motion.div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 space-y-6">
+      {/* Lower section */}
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+        {/* Recent activity */}
+        <div className="lg:col-span-2 space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-xl font-bold">Recent Activity</h3>
+            <h3 className="font-semibold">Recent activity</h3>
             {activity.length > 0 && (
-              <button className="text-sm font-medium text-primary hover:underline flex items-center gap-1">
-                View all <ArrowUpRight size={14} />
+              <button
+                onClick={() => router.push("/activity-logs")}
+                className="flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+              >
+                View all <ArrowUpRight size={12} />
               </button>
             )}
           </div>
-          
-          <div className="rounded-2xl border border-border bg-card/50 overflow-hidden min-h-[200px]">
-            {activity.length > 0 ? activity.map((act) => (
-              <div key={act.id} className="flex items-center gap-4 p-4 hover:bg-secondary/50 transition-colors border-b border-border last:border-0">
-                <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-sm font-bold">
-                  {act.initials}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold truncate">
-                    {act.user}
-                    <span className="font-normal text-muted-foreground"> {act.action}</span>
-                  </p>
-                  <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                    <Clock size={12} />
-                    {act.time}
-                  </p>
-                </div>
-                <button className="px-3 py-1 text-xs font-medium border border-border rounded-lg hover:bg-secondary transition-colors">
-                  Review
-                </button>
-              </div>
-            )) : (
-              <div className="flex flex-col items-center justify-center h-full p-12 text-center">
-                <Clock size={32} className="text-muted-foreground mb-2" />
-                <p className="text-muted-foreground">No recent activity found.</p>
+
+          <div className="overflow-hidden rounded-2xl border border-border bg-card">
+            {activity.length > 0 ? (
+              activity.map((act) => <ActivityRow key={act.id} act={act} />)
+            ) : (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <Clock size={28} className="mb-2 text-muted-foreground opacity-30" />
+                <p className="text-sm text-muted-foreground">No recent activity.</p>
               </div>
             )}
           </div>
         </div>
 
-        <div className="space-y-6">
-          <h3 className="text-xl font-bold">Quick Links</h3>
-          <div className="grid grid-cols-1 gap-4">
-            {[
-              { title: "Company Handbook", desc: "View all policies", icon: FileText },
-              { title: "Open Openings", desc: "Manage job posts", icon: Briefcase },
-              { title: "Team Directory", desc: "Browse employees", icon: Users },
-            ].map((link) => (
-              <button key={link.title} className="flex items-start gap-4 p-4 rounded-2xl border border-border bg-card hover:bg-secondary/50 transition-all text-left group">
-                <div className="p-2.5 rounded-xl bg-secondary group-hover:bg-primary/10 group-hover:text-primary transition-colors">
-                  <link.icon size={20} />
-                </div>
-                <div>
-                  <p className="font-semibold text-sm">{link.title}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">{link.desc}</p>
-                </div>
-              </button>
+        {/* Quick links */}
+        <div className="space-y-4">
+          <h3 className="font-semibold">Quick links</h3>
+          <div className="flex flex-col gap-3">
+            {QUICK_LINKS.map((link) => (
+              <QuickLink key={link.title} link={link} />
             ))}
           </div>
         </div>

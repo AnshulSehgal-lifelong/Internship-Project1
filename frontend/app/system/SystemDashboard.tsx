@@ -31,6 +31,7 @@ export default function SystemDashboard() {
   const [services, setServices] = React.useState<ServiceStatus[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const docsUrl = process.env.NEXT_PUBLIC_API_BASE_URL ? `${process.env.NEXT_PUBLIC_API_BASE_URL.slice(0, -4)}/docs` : "http://localhost:8000/docs";
 
   const loadHealth = React.useCallback(async () => {
     setIsLoading(true);
@@ -147,8 +148,8 @@ export default function SystemDashboard() {
               </p>
               <div className="mt-6">
                 <a 
-                  href="http://localhost:8000/docs" 
-                  target="_blank" 
+                  href={docsUrl}
+                  target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-2 px-6 py-2 bg-primary text-primary-foreground rounded-xl font-medium shadow-lg shadow-primary/20"
                 >

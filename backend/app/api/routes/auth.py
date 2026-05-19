@@ -51,27 +51,6 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
         raise credentials_error
     return user
 
-
-@router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
-async def register(payload: UserCreate, db: AsyncSession = Depends(get_db)) -> User:
-    result = await db.execute(select(User).where(User.email == payload.email))
-    existing_user = result.scalar_one_or_none()
-    if existing_user:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
-
-    user = User(
-        first_name=payload.first_name,
-        last_name=payload.last_name,
-        role=payload.role,
-        email=payload.email,
-        hashed_password=hash_password(payload.password),
-    )
-    db.add(user)
-    await db.commit()
-    await db.refresh(user)
-    return user
-
-
 @router.post("/token", response_model=Token)
 async def login_for_access_token(
     form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)
@@ -80,6 +59,9 @@ async def login_for_access_token(
     user = result.scalar_one_or_none()
     if user is None or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect email or password")
+
+    user.is_active = True
+    await db.commit()
 
     access_token = create_access_token(subject=user.email)
     return Token(access_token=access_token)
@@ -92,8 +74,17 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)) -> To
     if user is None or not verify_password(payload.password, user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect email or password")
 
+    user.is_active = True
+    await db.commit()
+
     access_token = create_access_token(subject=user.email)
     return Token(access_token=access_token)
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    current_user.is_active = False
+    await db.commit()
+    return None
 
 
 @router.get("/me", response_model=UserRead)
