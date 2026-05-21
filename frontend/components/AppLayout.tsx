@@ -10,9 +10,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, isLoading } = useAuth();
   
-  const isAuthPage = pathname === "/login";
+  const isPublicPage = pathname === "/login" || pathname.startsWith("/jobs");
 
-  if (isLoading) {
+  if (!isPublicPage && isLoading) {
     return (
       <div className="flex items-center justify-center w-full h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
@@ -20,8 +20,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (isAuthPage) {
-    return <div className="w-full">{children}</div>;
+  if (isPublicPage) {
+    return <div className="w-full min-h-screen overflow-y-auto">{children}</div>;
   }
 
   return (

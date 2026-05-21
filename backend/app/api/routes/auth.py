@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.session import get_db
+from app.models.department import Department
 from app.models.user import User
 from app.schemas.auth import Token, UserCreate, UserRead, LoginRequest
 
@@ -88,5 +89,23 @@ async def logout(current_user: User = Depends(get_current_user), db: AsyncSessio
 
 
 @router.get("/me", response_model=UserRead)
-async def read_me(current_user: User = Depends(get_current_user)) -> User:
-    return current_user
+async def read_me(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> UserRead:
+    department_name = None
+    if current_user.department_id is not None:
+        department = await db.get(Department, current_user.department_id)
+        if department is not None:
+            department_name = department.name
+
+    return {
+        "id": current_user.id,
+        "first_name": current_user.first_name,
+        "last_name": current_user.last_name,
+        "role": current_user.role,
+        "email": current_user.email,
+        "is_active": current_user.is_active,
+        "department_id": current_user.department_id,
+        "department_name": department_name,
+    }

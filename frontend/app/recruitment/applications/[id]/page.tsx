@@ -3,10 +3,10 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-import Recruitment from "./Recruitment";
+import Applications from "./Applications";
 import { useAuth } from "@/components/auth-context";
 
-export default function RecruitmentPage() {
+export default function ApplicationsPage() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
 
@@ -33,5 +33,6 @@ export default function RecruitmentPage() {
   if (!isAdmin && !isHrManager) {
     return null;
   }
-  return <Recruitment />;
+
+  return <Applications />;
 }

@@ -41,8 +41,10 @@ interface DepartmentRecord {
 
 const ROLE_OPTIONS = [
   "All roles",
-  "Administrator", "HR", "Manager", "Engineer",
-  "Designer", "Sales", "Finance", "Operations", "Other",
+  "Administrator",
+  "Manager",
+  "Employee",
+  "Intern",
 ];
 
 const STATUS_OPTIONS = ["All statuses", "Active", "Inactive"];
