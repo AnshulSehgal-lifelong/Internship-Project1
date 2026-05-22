@@ -1,25 +1,30 @@
 "use client";
 
 import React from "react";
-import { 
-  Book, 
-  FileText, 
-  Upload, 
-  MessageSquare, 
-  Send,
-  X,
+import {
+  AlertCircle,
+  Book,
+  FileText,
   Link2,
-  AlertCircle
+  MessageSquare,
+  Send,
+  Trash2,
+  Upload,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { api } from "@/lib/api";
 import { useAuth } from "@/components/auth-context";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 interface DocumentRecord {
-  id: number;
-  filename: string;
-  content_type: string | null;
-  text_preview: string | null;
+  id: string;
+  original_name: string;
+  mime_type: string;
+  status: string;
+  document_type: "policy" | "resume";
 }
 
 interface ChatItem {
@@ -28,223 +33,411 @@ interface ChatItem {
   source: string | null;
 }
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const INITIAL_MESSAGES: ChatItem[] = [
+  {
+    role: "assistant",
+    content: "Hello! I'm your HR AI assistant. Ask me anything about company policies.",
+    source: null,
+  },
+];
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function DocumentCard({
+  doc,
+  canManage,
+  onDelete,
+}: {
+  doc: DocumentRecord;
+  canManage: boolean;
+  onDelete: (id: string) => void;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.97 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className="group flex flex-col gap-4 rounded-2xl border border-border bg-card p-5 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/5"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+          <FileText size={20} />
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="rounded-lg bg-secondary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            {doc.mime_type || "doc"}
+          </span>
+          {canManage && (
+            <button
+              onClick={() => onDelete(doc.id)}
+              className="rounded-lg border border-border p-1.5 text-muted-foreground transition-colors hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+            >
+              <Trash2 size={13} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div>
+        <p className="truncate font-semibold text-sm transition-colors group-hover:text-primary">
+          {doc.original_name}
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Status:{" "}
+          <span
+            className={cn(
+              "font-medium",
+              doc.status === "ready" ? "text-emerald-500" : "text-amber-500"
+            )}
+          >
+            {doc.status}
+          </span>
+        </p>
+      </div>
+    </motion.div>
+  );
+}
+
+function ChatBubble({ message }: { message: ChatItem }) {
+  const isUser = message.role === "user";
+  return (
+    <div
+      className={cn(
+        "flex max-w-[85%] flex-col gap-2",
+        isUser ? "ml-auto items-end" : "mr-auto items-start"
+      )}
+    >
+      <div
+        className={cn(
+          "rounded-2xl px-4 py-2.5 text-xs leading-relaxed",
+          isUser
+            ? "rounded-tr-sm bg-primary text-primary-foreground"
+            : "rounded-tl-sm bg-secondary text-foreground"
+        )}
+      >
+        {message.content}
+      </div>
+      {message.source && (
+        <div className="flex items-center gap-1 rounded-lg bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold text-emerald-600">
+          <Link2 size={9} />
+          {message.source}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ChatPanel({
+  messages,
+  input,
+  isTyping,
+  onInputChange,
+  onSend,
+  onClose,
+}: {
+  messages: ChatItem[];
+  input: string;
+  isTyping: boolean;
+  onInputChange: (value: string) => void;
+  onSend: () => void;
+  onClose: () => void;
+}) {
+  const bottomRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, isTyping]);
+
+  return (
+    <>
+      {/* Backdrop */}
+      <motion.div
+        key="backdrop"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
+      />
+
+      {/* Panel */}
+      <motion.div
+        key="panel"
+        initial={{ x: "100%" }}
+        animate={{ x: 0 }}
+        exit={{ x: "100%" }}
+        transition={{ type: "spring", stiffness: 320, damping: 32 }}
+        className="fixed bottom-0 right-0 top-0 z-50 flex w-full max-w-md flex-col border-l border-border bg-card shadow-2xl"
+      >
+        {/* Header */}
+        <div className="flex shrink-0 items-center justify-between border-b border-border bg-primary/5 px-5 py-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <MessageSquare size={16} />
+            </div>
+            <div>
+              <p className="text-sm font-semibold">HR AI Assistant</p>
+              <p className="text-xs text-muted-foreground">Powered by your policy documents</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Messages */}
+        <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
+          {messages.map((m, i) => (
+            <ChatBubble key={i} message={m} />
+          ))}
+          {isTyping && (
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span className="flex gap-1">
+                {[0, 1, 2].map((d) => (
+                  <span
+                    key={d}
+                    className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground/60"
+                    style={{ animationDelay: `${d * 0.15}s` }}
+                  />
+                ))}
+              </span>
+              AI is thinking…
+            </div>
+          )}
+          <div ref={bottomRef} />
+        </div>
+
+        {/* Input */}
+        <div className="shrink-0 border-t border-border p-4">
+          <div className="flex items-center gap-2 rounded-xl border border-border bg-secondary/50 px-3 py-2">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => onInputChange(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && !isTyping && onSend()}
+              placeholder="Ask a question…"
+              className="flex-1 bg-transparent text-xs focus:outline-none"
+            />
+            <button
+              onClick={onSend}
+              disabled={isTyping || !input.trim()}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
+            >
+              <Send size={13} />
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </>
+  );
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
 export default function KnowledgeBase() {
+  const { user } = useAuth();
+
   const [documents, setDocuments] = React.useState<DocumentRecord[]>([]);
   const [isChatOpen, setIsChatOpen] = React.useState(false);
-  const [messages, setMessages] = React.useState<ChatItem[]>([
-    { role: "assistant", content: "Hello! I'm your HR AI assistant. You can ask me anything about company policies.", source: null }
-  ]);
+  const [messages, setMessages] = React.useState<ChatItem[]>(INITIAL_MESSAGES);
   const [input, setInput] = React.useState("");
   const [isTyping, setIsTyping] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
-  React.useEffect(() => {
-    async function loadDocuments() {
-      try {
-        const data = await api.get<DocumentRecord[]>("/documents");
-        setDocuments(data || []);
-        setError(null);
-      } catch (err) {
-        console.error("Failed to fetch documents:", err);
-        setError("Could not load documents.");
-      } finally {
-        setIsLoading(false);
-      }
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  // ─── Permissions ────────────────────────────────────────────────────────
+
+  const canManagePolicies = React.useMemo(() => {
+    const role = user?.role ?? "";
+    const dept = user?.department_name?.trim().toLowerCase() ?? "";
+    const isAdmin = role === "Administrator";
+    const isHrManager = role === "Manager" && ["hr", "human resources"].includes(dept);
+    return isAdmin || isHrManager;
+  }, [user]);
+
+  // ─── Data fetching ───────────────────────────────────────────────────────
+
+  const loadDocuments = React.useCallback(async () => {
+    try {
+      const data = await api.get<DocumentRecord[]>("/documents?document_type=policy");
+      setDocuments(data ?? []);
+      setError(null);
+    } catch (err) {
+      console.error("Failed to fetch documents:", err);
+      setError("Could not load documents.");
+    } finally {
+      setIsLoading(false);
     }
-    loadDocuments();
   }, []);
 
-  const { user } = useAuth();
+  React.useEffect(() => {
+    void loadDocuments();
+  }, [loadDocuments]);
 
-  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+  // ─── Handlers ───────────────────────────────────────────────────────────
 
-  const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
     if (!file) return;
-
     try {
       const formData = new FormData();
       formData.append("file", file);
+      formData.append("document_type", "policy");
       await api.upload("/documents/upload", formData);
-      const updatedDocuments = await api.get<DocumentRecord[]>("/documents");
-      setDocuments(updatedDocuments || []);
-      setError(null);
+      await loadDocuments();
     } catch (err) {
       console.error("Upload failed:", err);
       setError("Could not upload document.");
     } finally {
-      event.target.value = "";
+      e.target.value = "";
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      await api.delete(`/documents/${id}`);
+      await loadDocuments();
+    } catch (err) {
+      console.error("Delete failed:", err);
+      setError("Could not delete document.");
     }
   };
 
   const handleSend = async () => {
     if (!input.trim()) return;
-    
-    const userMessage = { role: "user", content: input, source: null };
-    setMessages(prev => [...prev, userMessage]);
+    const userMessage: ChatItem = { role: "user", content: input, source: null };
+    setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setIsTyping(true);
-
     try {
-      const response = await api.post<{ reply: string }>("/ai/chat", { message: input });
-      setMessages(prev => [...prev, { role: "assistant", content: response.reply, source: "Backend AI" }]);
+      const res = await api.post<{ reply: string }>("/ai/chat", { message: input });
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: res.reply, source: "Backend AI" },
+      ]);
     } catch (err) {
       console.error("Chat failed:", err);
-      setMessages(prev => [...prev, { 
-        role: "assistant", 
-        content: "Error: AI assistant is currently unavailable. Please check backend connection.",
-        source: "System Error"
-      }]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "AI assistant is currently unavailable. Please check the backend connection.",
+          source: "System",
+        },
+      ]);
     } finally {
       setIsTyping(false);
     }
   };
 
+  // ─── Loading state ───────────────────────────────────────────────────────
+
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-[60vh]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <div className="flex h-[60vh] items-center justify-center">
+        <div className="h-7 w-7 animate-spin rounded-full border-2 border-primary border-t-transparent" />
       </div>
     );
   }
 
+  // ─── Render ──────────────────────────────────────────────────────────────
+
   return (
-    <div className="space-y-8 relative pb-20">
-      <div className="flex items-end justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">Knowledge Base</h2>
-          <p className="text-muted-foreground mt-1">Access company policies and internal documentation.</p>
+    <>
+      <div className="space-y-8">
+        {/* Page header */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div className="space-y-1.5">
+            <h2 className="text-3xl font-bold tracking-tight">Knowledge base</h2>
+            <p className="text-sm text-muted-foreground">
+              Access company policies and internal documentation.
+            </p>
+          </div>
+
+          {canManagePolicies && (
+            <>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-md shadow-primary/20 transition-opacity hover:opacity-90 active:scale-95"
+              >
+                <Upload size={16} />
+                Upload policy
+              </button>
+              <input ref={fileInputRef} type="file" hidden onChange={handleUpload} />
+            </>
+          )}
         </div>
-        {user?.role === "Administrator" && (
-          <>
-            <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg font-medium shadow-lg shadow-primary/20">
-              <Upload size={18} />
-              <span>Upload Policy</span>
-            </button>
-            <input ref={fileInputRef} type="file" hidden onChange={handleUpload} />
-          </>
+
+        {/* Error */}
+        {error && (
+          <div className="flex items-center gap-3 rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
+            <AlertCircle size={15} className="shrink-0" />
+            {error}
+          </div>
         )}
+
+        {/* Documents grid */}
+        {documents.length > 0 ? (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {documents.map((doc) => (
+              <DocumentCard
+                key={doc.id}
+                doc={doc}
+                canManage={canManagePolicies}
+                onDelete={handleDelete}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border p-16 text-center">
+            <FileText size={36} className="mb-4 text-muted-foreground opacity-20" />
+            <h3 className="font-semibold">No documents yet</h3>
+            <p className="mt-1 max-w-xs text-sm text-muted-foreground">
+              Upload policy documents to populate the knowledge base.
+            </p>
+          </div>
+        )}
+
+        {/* AI assistant CTA */}
+        <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-border bg-secondary/20 px-6 py-10 text-center">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-card shadow-sm">
+            <Book size={22} className="text-muted-foreground" />
+          </div>
+          <div>
+            <h4 className="font-semibold">Need help finding something?</h4>
+            <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+              Use our AI-powered assistant to get instant answers from your policy documents.
+            </p>
+          </div>
+          <button
+            onClick={() => setIsChatOpen(true)}
+            className="inline-flex items-center gap-2 rounded-xl bg-foreground px-5 py-2.5 text-sm font-semibold text-background shadow-sm transition-opacity hover:opacity-80"
+          >
+            <MessageSquare size={15} />
+            Launch AI assistant
+          </button>
+        </div>
       </div>
 
-      {error ? (
-        <div className="p-12 text-center border-2 border-dashed border-destructive/20 bg-destructive/5 rounded-3xl">
-          <AlertCircle size={32} className="text-destructive mx-auto mb-2 opacity-50" />
-          <p className="text-sm font-medium">{error}</p>
-        </div>
-      ) : documents.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {documents.map((doc, idx) => (
-            <motion.div
-              key={doc.id}
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: idx * 0.1 }}
-              className="p-6 rounded-3xl border border-border bg-card hover:shadow-xl hover:shadow-primary/5 transition-all group cursor-pointer"
-            >
-              <div className="flex items-start justify-between mb-4">
-                <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
-                  <FileText size={24} />
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold px-2 py-1 bg-secondary rounded-lg">{doc.content_type || "document"}</span>
-                  {user?.role === "Administrator" && (
-                    <button onClick={async (e) => { e.stopPropagation(); try { await api.delete(`/documents/${doc.id}`); const updated = await api.get<DocumentRecord[]>("/documents"); setDocuments(updated || []); } catch (err) { console.error(err); setError("Could not delete document."); } }} className="text-xs text-destructive px-2 py-1 rounded-md border border-destructive/20 hover:bg-destructive/10">Delete</button>
-                  )}
-                </div>
-              </div>
-              <h4 className="font-bold mb-1 group-hover:text-primary transition-colors">{doc.filename}</h4>
-              <p className="text-xs text-muted-foreground line-clamp-2">{doc.text_preview || "No preview available."}</p>
-            </motion.div>
-          ))}
-        </div>
-      ) : (
-        <div className="p-20 text-center border-2 border-dashed border-border rounded-3xl">
-          <FileText size={48} className="text-muted-foreground mx-auto mb-4 opacity-10" />
-          <h3 className="text-lg font-bold">No Documents Available</h3>
-          <p className="text-sm text-muted-foreground mt-1">Upload policy documents to populate the knowledge base.</p>
-        </div>
-      )}
-
-      <div className="p-8 rounded-3xl border-2 border-dashed border-border bg-secondary/30 flex flex-col items-center justify-center text-center">
-        <div className="p-4 rounded-full bg-background mb-4">
-          <Book size={32} className="text-muted-foreground" />
-        </div>
-        <h4 className="font-bold">Need help finding something?</h4>
-        <p className="text-sm text-muted-foreground mt-1 max-w-sm">
-          Use our AI-powered RAG assistant to get instant answers.
-        </p>
-        <button 
-          onClick={() => setIsChatOpen(true)}
-          className="mt-6 px-6 py-2 bg-foreground text-background rounded-xl font-medium hover:opacity-90 transition-all flex items-center gap-2"
-        >
-          <MessageSquare size={18} />
-          <span>Launch AI Assistant</span>
-        </button>
-      </div>
-
+      {/* Chat panel */}
       <AnimatePresence>
         {isChatOpen && (
-          <>
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsChatOpen(false)}
-              className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50"
-            />
-            <motion.div
-              initial={{ x: "100%" }}
-              animate={{ x: 0 }}
-              exit={{ x: "100%" }}
-              className="fixed top-0 right-0 h-full w-full max-w-md bg-card border-l border-border shadow-2xl z-50 flex flex-col"
-            >
-              <div className="p-6 border-b border-border flex items-center justify-between bg-primary/5">
-                <div className="flex items-center gap-3">
-                  <MessageSquare size={20} className="text-primary" />
-                  <h3 className="font-bold text-sm">HR AI Assistant</h3>
-                </div>
-                <button onClick={() => setIsChatOpen(false)} className="p-2 hover:bg-secondary rounded-lg transition-colors">
-                  <X size={18} />
-                </button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                {messages.map((m, i) => (
-                  <div key={i} className={cn("flex flex-col max-w-[85%]", m.role === "user" ? "ml-auto items-end" : "mr-auto items-start")}>
-                    <div className={cn("p-3 rounded-2xl text-xs leading-relaxed", m.role === "user" ? "bg-primary text-primary-foreground rounded-tr-none" : "bg-secondary rounded-tl-none")}>
-                      {m.content}
-                    </div>
-                    {m.source && (
-                      <div className="mt-2 flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-600 text-[10px] font-bold">
-                        <Link2 size={10} />
-                        {m.source}
-                      </div>
-                    )}
-                  </div>
-                ))}
-                {isTyping && <div className="animate-pulse text-[10px] text-muted-foreground ml-2">AI is thinking...</div>}
-              </div>
-
-              <div className="p-6 border-t border-border">
-                <div className="flex items-center gap-2 p-2 rounded-2xl bg-secondary border border-border">
-                  <input 
-                    type="text" 
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                    placeholder="Ask a question..." 
-                    className="flex-1 bg-transparent border-none focus:ring-0 text-xs px-2"
-                  />
-                  <button onClick={handleSend} disabled={isTyping} className="p-2 bg-primary text-primary-foreground rounded-xl hover:opacity-90 disabled:opacity-50">
-                    <Send size={16} />
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </>
+          <ChatPanel
+            messages={messages}
+            input={input}
+            isTyping={isTyping}
+            onInputChange={setInput}
+            onSend={handleSend}
+            onClose={() => setIsChatOpen(false)}
+          />
         )}
       </AnimatePresence>
-    </div>
+    </>
   );
 }

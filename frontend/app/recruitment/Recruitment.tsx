@@ -8,7 +8,6 @@ import {
   AlertCircle,
   RefreshCw,
   Plus,
-  Sparkles,
   Trash2,
   ArrowRight,
 } from "lucide-react";
@@ -70,11 +69,13 @@ function DetailPanel({
   canEdit,
   onDelete,
   onOpenDirectory,
+  onViewApplications,
 }: {
   opening: JobOpeningRecord;
   canEdit: boolean;
   onDelete: (id: number) => void;
   onOpenDirectory: () => void;
+  onViewApplications: () => void;
 }) {
   return (
     <motion.div
@@ -114,6 +115,15 @@ function DetailPanel({
           </p>
           <p className="leading-relaxed text-muted-foreground">{opening.requirements}</p>
         </div>
+        {canEdit && (
+          <button
+            onClick={onViewApplications}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-border px-4 py-2.5 text-sm font-medium transition-colors hover:bg-secondary"
+          >
+            View applications
+            <ArrowRight size={15} />
+          </button>
+        )}
       </div>
 
       {/* Footer */}
@@ -163,7 +173,11 @@ export default function Recruitment() {
 
   const { user } = useAuth();
   const router = useRouter();
-  const canEdit = user?.role === "Administrator" || user?.role === "HR";
+  const role = user?.role || "";
+  const departmentName = user?.department_name ?? null;
+  const isAdmin = role === "Administrator";
+  const isHrManager = role === "Manager" && ["hr", "human resources"].includes(departmentName?.trim().toLowerCase() ?? "");
+  const canEdit = isAdmin || isHrManager;
 
   // ─── Data fetching ───────────────────────────────────────────────────────
 
@@ -282,9 +296,6 @@ export default function Recruitment() {
                     Publish a new role for the hiring team.
                   </p>
                 </div>
-                <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
-                  Editable
-                </span>
               </div>
 
               <input
@@ -366,6 +377,7 @@ export default function Recruitment() {
                 canEdit={canEdit}
                 onDelete={handleDelete}
                 onOpenDirectory={() => router.push("/employee-directory")}
+                onViewApplications={() => router.push(`/recruitment/applications/${selectedOpening.id}`)}
               />
             ) : (
               <EmptyDetail />

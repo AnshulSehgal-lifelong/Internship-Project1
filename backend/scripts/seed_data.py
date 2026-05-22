@@ -12,14 +12,17 @@ This script inserts:
 from __future__ import annotations
 
 import asyncio
-from datetime import date
+from datetime import date, datetime, timezone
+from pathlib import Path
+import uuid
 
 import bcrypt
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.db.session import AsyncSessionLocal
 from app.models.department import Department
-from app.models.document import Document
+from app.models.document import Document, DocumentStatus, DocumentType
 from app.models.job_opening import JobOpening
 from app.models.user import User
 
@@ -52,7 +55,7 @@ async def main() -> None:
                 last_name="Johnson",
                 email="alice.johnson@talentflow.local",
                 department_id=engineering.id,
-                role="Senior Backend Engineer",
+                role="Manager",
                 salary=98000,
                 hire_date=date(2024, 2, 12),
                 hashed_password=hash_password("Welcome123!"),
@@ -67,7 +70,7 @@ async def main() -> None:
                 last_name="Singh",
                 email="bob.singh@talentflow.local",
                 department_id=hr.id,
-                role="HR Manager",
+                role="Manager",
                 salary=86000,
                 hire_date=date(2023, 9, 4),
                 hashed_password=hash_password("Welcome123!"),
@@ -100,12 +103,33 @@ async def main() -> None:
             )
 
         # Sample document for the knowledge base.
-        if not (await session.execute(select(Document).where(Document.filename == "Employee Handbook - Sample.pdf"))).scalar_one_or_none():
+        if not (await session.execute(select(Document).where(Document.original_name == "Employee Handbook - Sample.pdf"))).scalar_one_or_none():
+            storage_root = Path(settings.storage_base_path)
+            if not storage_root.is_absolute():
+                storage_root = Path(__file__).resolve().parents[1] / storage_root
+
+            timestamp = datetime.now(timezone.utc)
+            storage_dir = storage_root / f"{timestamp.year:04d}" / f"{timestamp.month:02d}"
+            storage_dir.mkdir(parents=True, exist_ok=True)
+
+            original_name = "Employee Handbook - Sample.pdf"
+            stored_filename = f"{uuid.uuid4()}{Path(original_name).suffix}"
+            storage_path = storage_dir / stored_filename
+            if not storage_path.exists():
+                storage_path.write_text(
+                    "Sample handbook content: leave policy, code of conduct, onboarding, and benefits overview."
+                )
+
             session.add(
                 Document(
-                    filename="Employee Handbook - Sample.pdf",
-                    content_type="application/pdf",
-                    text_preview="Sample handbook content: leave policy, code of conduct, onboarding, and benefits overview.",
+                    storage_path=str(storage_path.resolve()),
+                    original_name=original_name,
+                    file_size_bytes=storage_path.stat().st_size,
+                    mime_type="application/pdf",
+                    user_id=bob.id,
+                    status=DocumentStatus.indexed,
+                    vector_collection_id=str(uuid.uuid4()),
+                    document_type=DocumentType.policy,
                 )
             )
 

@@ -12,11 +12,31 @@ from app.api.routes.auth import get_current_user, hash_password
 
 router = APIRouter(prefix="/employees", tags=["employees"])
 
+ALLOWED_EMPLOYEE_ROLES = {"Manager", "Employee", "Intern"}
+
+
+def _is_hr_department(name: str | None) -> bool:
+    if not name:
+        return False
+    normalized = name.strip().lower()
+    return normalized in {"hr", "human resources"}
+
+
+async def _is_hr_manager(current_user: User, db: AsyncSession) -> bool:
+    if (current_user.role or "") != "Manager" or current_user.department_id is None:
+        return False
+    department = await db.get(Department, current_user.department_id)
+    return department is not None and _is_hr_department(department.name)
+
 
 @router.post("/", response_model=EmployeeRead, status_code=status.HTTP_201_CREATED)
 async def create_employee(payload: EmployeeCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    if (current_user.role or "") != "Administrator":
+    is_hr_manager = await _is_hr_manager(current_user, db)
+    if (current_user.role or "") != "Administrator" and not is_hr_manager:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to create employees")
+
+    if payload.role and payload.role not in ALLOWED_EMPLOYEE_ROLES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Role must be Manager, Employee, or Intern")
 
     user = User(
         first_name=payload.first_name,
@@ -55,7 +75,8 @@ async def create_employee(payload: EmployeeCreate, db: AsyncSession = Depends(ge
 
 @router.get("/", response_model=list[EmployeeRead])
 async def list_employees(search: str | None = None, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    if (current_user.role or "") not in ("Administrator", "HR"):
+    is_hr_manager = await _is_hr_manager(current_user, db)
+    if (current_user.role or "") != "Administrator" and not is_hr_manager:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view employee directory")
 
     query = (
@@ -107,7 +128,8 @@ async def get_employee(employee_id: int, db: AsyncSession = Depends(get_db), cur
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
 
-    if (current_user.role or "") in ("Administrator", "HR") or current_user.email == user.email:
+    is_hr_manager = await _is_hr_manager(current_user, db)
+    if (current_user.role or "") == "Administrator" or is_hr_manager or current_user.email == user.email:
         return {
             "id": user.id,
             "name": f"{user.first_name or ''} {user.last_name or ''}".strip(),
@@ -132,8 +154,12 @@ async def update_employee(employee_id: int, payload: EmployeeUpdate, db: AsyncSe
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
         
-    if (current_user.role or "") != "Administrator":
+    is_hr_manager = await _is_hr_manager(current_user, db)
+    if (current_user.role or "") != "Administrator" and not is_hr_manager:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to edit employee")
+
+    if payload.role and payload.role not in ALLOWED_EMPLOYEE_ROLES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Role must be Manager, Employee, or Intern")
 
     payload_dict = payload.model_dump(exclude_unset=True)
     for key, value in payload_dict.items():
@@ -157,7 +183,8 @@ async def update_employee(employee_id: int, payload: EmployeeUpdate, db: AsyncSe
 
 @router.delete("/{employee_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_employee(employee_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)) -> None:
-    if (current_user.role or "") != "Administrator":
+    is_hr_manager = await _is_hr_manager(current_user, db)
+    if (current_user.role or "") != "Administrator" and not is_hr_manager:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to delete employee")
 
     user = await db.get(User, employee_id)

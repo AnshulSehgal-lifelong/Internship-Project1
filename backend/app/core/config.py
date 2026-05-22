@@ -11,6 +11,12 @@ class Settings(BaseSettings):
     jwt_secret_key: str = os.getenv("JWT_SECRET_KEY", "change-me-in-env")
     jwt_algorithm: str = os.getenv("JWT_ALGORITHM", "HS256")
     access_token_expire_minutes: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 30))
+    storage_base_path: str = os.getenv("STORAGE_BASE_PATH", "storage/uploads")
+    max_upload_size_mb: int = int(os.getenv("MAX_UPLOAD_SIZE_MB", 25))
+    allowed_mime_types: str = os.getenv(
+        "ALLOWED_MIME_TYPES",
+        "application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain",
+    )
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 

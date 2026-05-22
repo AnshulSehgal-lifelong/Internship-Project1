@@ -182,7 +182,7 @@ function ErrorState({ message }: { message: string }) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function Dashboard() {
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
 
   const [stats, setStats] = React.useState<DashboardCard[]>([]);
@@ -191,6 +191,12 @@ export default function Dashboard() {
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
+    if (authLoading) return;
+    if (!user) {
+      setIsLoading(false);
+      return;
+    }
+
     async function loadData() {
       try {
         const data = await api.get<{
@@ -200,13 +206,17 @@ export default function Dashboard() {
           recentActivity: RecentActivity[];
         }>("/dashboard/summary");
 
+        const employeeCount = data?.employeeCount ?? 0;
+        const departmentCount = data?.departmentCount ?? 0;
+        const jobCount = data?.jobCount ?? 0;
+
         setStats([
-          { name: "Employees", value: data.employeeCount, icon: "Users", bg: "bg-blue-500/10", color: "text-blue-500", change: `${data.employeeCount} total`, href: "/employee-directory" },
-          { name: "Departments", value: data.departmentCount, icon: "Briefcase", bg: "bg-violet-500/10", color: "text-violet-500", change: `${data.departmentCount} managed`, href: "/departments" },
-          { name: "Open Jobs", value: data.jobCount, icon: "FileText", bg: "bg-emerald-500/10", color: "text-emerald-500", change: `${data.jobCount} openings`, href: "/recruitment" },
+          { name: "Employees", value: employeeCount, icon: "Users", bg: "bg-blue-500/10", color: "text-blue-500", change: `${employeeCount} total`, href: "/employee-directory" },
+          { name: "Departments", value: departmentCount, icon: "Briefcase", bg: "bg-violet-500/10", color: "text-violet-500", change: `${departmentCount} managed`, href: "/departments" },
+          { name: "Open Jobs", value: jobCount, icon: "FileText", bg: "bg-emerald-500/10", color: "text-emerald-500", change: `${jobCount} openings`, href: "/recruitment" },
           { name: "Welcome", value: user?.first_name ?? "HR", icon: "UserCheck", bg: "bg-amber-500/10", color: "text-amber-500", change: "Signed in" },
         ]);
-        setActivity(data.recentActivity ?? []);
+        setActivity(data?.recentActivity ?? []);
         setError(null);
       } catch (err) {
         console.error("Failed to fetch dashboard data:", err);
@@ -217,9 +227,10 @@ export default function Dashboard() {
     }
 
     void loadData();
-  }, [user?.first_name]);
+  }, [authLoading, user, user?.first_name]);
 
-  if (isLoading) return <LoadingState />;
+  if (authLoading || isLoading) return <LoadingState />;
+  if (!user) return null;
   if (error) return <ErrorState message={error} />;
 
   return (

@@ -26,3 +26,5 @@ class UserRead(ORMBaseModel):
     role: str | None = None
     email: str
     is_active: bool
+    department_id: int | None = None
+    department_name: str | None = None

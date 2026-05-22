@@ -8,6 +8,8 @@ import {
   Users, 
   UserPlus, 
   Building2,
+  ClipboardList,
+  UserCheck,
   History,
   BookOpen, 
   Settings, 
@@ -23,10 +25,19 @@ const navItems = [
   { name: "Activity Logs", href: "/activity-logs", icon: History },
   { name: "Employee Directory", href: "/employee-directory", icon: Users },
   { name: "Departments", href: "/departments", icon: Building2 },
+  { name: "My Department", href: "/my-department", icon: UserCheck },
   { name: "Recruitment", href: "/recruitment", icon: UserPlus },
+  { name: "Tasks", href: "/tasks", icon: ClipboardList },
   { name: "Knowledge Base", href: "/knowledge-base", icon: BookOpen },
   { name: "System", href: "/system", icon: Settings },
 ];
+
+const HR_DEPARTMENTS = new Set(["hr", "human resources"]);
+
+function isHrDepartment(name?: string | null) {
+  if (!name) return false;
+  return HR_DEPARTMENTS.has(name.trim().toLowerCase());
+}
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -39,15 +50,20 @@ export default function Sidebar() {
   const visibleItems = React.useMemo(() => {
     if (!user) return [];
     const role = user.role || "";
-    if (role === "Administrator") return navItems;
-    if (role === "HR") return navItems.filter(i => ["Activity Logs", "Employee Directory", "Recruitment", "Knowledge Base", "Dashboard"].includes(i.name));
-    // other employees: only Knowledge Base, dashboard, logs, and profile
-    return navItems.filter(i => ["Activity Logs", "Knowledge Base", "Dashboard"].includes(i.name)).concat([{ name: "Profile", href: "/profile", icon: Users }]);
+    const isAdmin = role === "Administrator";
+    const isHrManager = role === "Manager" && isHrDepartment(user.department_name);
+    const namesToSkip = new Set(['Tasks', 'My Department']);
+    if (isAdmin) return navItems.filter(item => !namesToSkip.has(item.name));
+    if (isHrManager) {
+      return navItems.filter(i => ["Employee Directory", "Recruitment", "Knowledge Base", "Dashboard", "Tasks", "My Department"].includes(i.name));
+    }
+    // other employees: only Knowledge Base and dashboard
+    return navItems.filter(i => ["Knowledge Base", "Dashboard", "Tasks", "My Department"].includes(i.name)).concat([{ name: "Profile", href: "/profile", icon: Users }]);
   }, [user]);
 
   return (
     <aside className="w-64 h-full border-r border-border bg-card/50 backdrop-blur-xl flex flex-col">
-      <div className="p-6">
+      <div className="p-6 flex-1 overflow-y-auto">
         <div className="flex items-center gap-3 mb-8">
           <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-primary-foreground shadow-lg shadow-primary/20">
             <LayoutDashboard size={24} />

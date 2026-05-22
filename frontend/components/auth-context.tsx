@@ -9,8 +9,10 @@ interface User {
   first_name: string;
   last_name: string;
   email: string;
-  role: string;
+  role: string | null;
   is_active: boolean;
+  department_id?: number | null;
+  department_name?: string | null;
 }
 
 interface AuthContextType {
@@ -19,8 +21,6 @@ interface AuthContextType {
   login: (formData: FormData) => Promise<void>;
   logout: () => void;
 }
-
-
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -32,7 +32,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     async function loadUser() {
-      const token = sessionStorage.getItem("token") ?? localStorage.getItem("token");
+      const token =
+        sessionStorage.getItem("token") ?? localStorage.getItem("token");
       if (token) {
         api.setToken(token);
         try {
@@ -51,10 +52,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!isLoading) {
-      const isPublicPage = pathname === "/login";
+      const isPublicPage =
+        pathname === "/login" || pathname.startsWith("/jobs");
+      const isLoginPage = pathname === "/login";
       if (!user && !isPublicPage) {
         router.push("/login");
-      } else if (user && isPublicPage) {
+      } else if (user && isLoginPage) {
         router.push("/dashboard");
       }
     }
@@ -67,8 +70,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(userData ?? null);
     router.push("/dashboard");
   };
-
-
 
   const logout = async () => {
     try {
