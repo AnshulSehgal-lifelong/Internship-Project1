@@ -63,3 +63,11 @@ Thumbs.db
 .pytest_cache
 htmlcov
 .coverage
+
+# local
+*.local.*
+*.local
+
+# uploaded files
+storage
+resumes
