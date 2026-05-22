@@ -3,13 +3,37 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.models.department import Department
-from app.models.user import User
+from app.db.models.department import Department
+from app.db.models.user import User
 from app.schemas.department import DepartmentCreate, DepartmentRead, DepartmentUpdate, DepartmentOverview
 from app.api.routes.auth import get_current_user
+from app.api.routes.utils import format_full_name
 
 
 router = APIRouter(prefix="/departments", tags=["departments"])
+
+
+def _build_manager_payload(manager: User | None) -> dict[str, object] | None:
+    """Serialize a department manager."""
+    if manager is None:
+        return None
+    return {
+        "id": manager.id,
+        "name": format_full_name(manager.first_name, manager.last_name, fallback=""),
+        "role": manager.role,
+        "email": manager.email,
+    }
+
+
+def _build_member_payload(member: User) -> dict[str, object]:
+    """Serialize a department member."""
+    return {
+        "id": member.id,
+        "name": format_full_name(member.first_name, member.last_name, fallback=""),
+        "role": member.role,
+        "email": member.email,
+        "is_active": member.is_active,
+    }
 
 
 @router.post("/", response_model=DepartmentRead, status_code=status.HTTP_201_CREATED)
@@ -18,6 +42,7 @@ async def create_department(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Department:
+    """Create a department without assigning a manager."""
     if (current_user.role or "") != "Administrator":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to create departments")
 
@@ -36,6 +61,7 @@ async def list_departments(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[Department]:
+    """List all departments."""
     if current_user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
 
@@ -48,6 +74,7 @@ async def get_my_department(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> DepartmentOverview:
+    """Return the current user's department with manager and members."""
     if current_user.department_id is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No department assigned")
 
@@ -59,25 +86,8 @@ async def get_my_department(
     result = await db.execute(select(User).where(User.department_id == department.id).order_by(User.id))
     members = result.scalars().all()
 
-    manager_payload = None
-    if manager is not None:
-        manager_payload = {
-            "id": manager.id,
-            "name": f"{manager.first_name or ''} {manager.last_name or ''}".strip(),
-            "role": manager.role,
-            "email": manager.email,
-        }
-
-    members_payload = [
-        {
-            "id": member.id,
-            "name": f"{member.first_name or ''} {member.last_name or ''}".strip(),
-            "role": member.role,
-            "email": member.email,
-            "is_active": member.is_active,
-        }
-        for member in members
-    ]
+    manager_payload = _build_manager_payload(manager)
+    members_payload = [_build_member_payload(member) for member in members]
 
     return {
         "id": department.id,
@@ -93,6 +103,7 @@ async def get_department(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Department:
+    """Return a single department by id."""
     if current_user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
 
@@ -109,6 +120,7 @@ async def update_department(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Department:
+    """Update a department and optionally assign a manager."""
     if (current_user.role or "") != "Administrator":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to edit departments")
 
@@ -137,6 +149,7 @@ async def delete_department(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> None:
+    """Delete a department."""
     if (current_user.role or "") != "Administrator":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to delete departments")
 

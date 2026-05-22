@@ -21,10 +21,10 @@ from sqlalchemy import select
 
 from app.core.config import settings
 from app.db.session import AsyncSessionLocal
-from app.models.department import Department
-from app.models.document import Document, DocumentStatus, DocumentType
-from app.models.job_opening import JobOpening
-from app.models.user import User
+from backend.app.db.models.department import Department
+from backend.app.db.models.document import Document, DocumentStatus, DocumentType
+from backend.app.db.models.job_opening import JobOpening
+from backend.app.db.models.user import User
 
 
 def hash_password(password: str) -> str:

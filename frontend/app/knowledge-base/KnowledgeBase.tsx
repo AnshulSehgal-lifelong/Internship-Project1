@@ -257,8 +257,9 @@ export default function KnowledgeBase() {
     const role = user?.role ?? "";
     const dept = user?.department_name?.trim().toLowerCase() ?? "";
     const isAdmin = role === "Administrator";
+    const isHrUser = role === "HR";
     const isHrManager = role === "Manager" && ["hr", "human resources"].includes(dept);
-    return isAdmin || isHrManager;
+    return isAdmin || isHrUser || isHrManager;
   }, [user]);
 
   // ─── Data fetching ───────────────────────────────────────────────────────

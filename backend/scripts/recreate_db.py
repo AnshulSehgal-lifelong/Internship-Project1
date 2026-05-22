@@ -1,12 +1,12 @@
 import asyncio
 from app.db.session import engine
-from app.models.base import Base
+from backend.app.db.base import Base
 
 # Import all models to ensure they are registered with Base.metadata
-from app.models.user import User
-from app.models.department import Department
-from app.models.job_opening import JobOpening
-from app.models.document import Document
+from backend.app.db.models.user import User
+from backend.app.db.models.department import Department
+from backend.app.db.models.job_opening import JobOpening
+from backend.app.db.models.document import Document
 
 async def main():
     async with engine.begin() as conn:

@@ -4,10 +4,11 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.models.user import User
-from app.models.department import Department
+from app.db.models.user import User
+from app.db.models.department import Department
 from app.schemas.employee import EmployeeCreate, EmployeeRead, EmployeeUpdate
 from app.api.routes.auth import get_current_user, hash_password
+from app.api.routes.utils import format_full_name, is_hr_department
 
 
 router = APIRouter(prefix="/employees", tags=["employees"])
@@ -15,24 +16,43 @@ router = APIRouter(prefix="/employees", tags=["employees"])
 ALLOWED_EMPLOYEE_ROLES = {"Manager", "Employee", "Intern"}
 
 
-def _is_hr_department(name: str | None) -> bool:
-    if not name:
-        return False
-    normalized = name.strip().lower()
-    return normalized in {"hr", "human resources"}
-
-
-async def _is_hr_manager(current_user: User, db: AsyncSession) -> bool:
-    if (current_user.role or "") != "Manager" or current_user.department_id is None:
+async def _can_access_employee_directory(current_user: User, db: AsyncSession) -> bool:
+    """Return True when the current user may view and manage the employee directory."""
+    role = current_user.role or ""
+    if role == "Administrator" or role == "HR":
+        return True
+    if role != "Manager" or current_user.department_id is None:
         return False
     department = await db.get(Department, current_user.department_id)
-    return department is not None and _is_hr_department(department.name)
+    return department is not None and is_hr_department(department.name)
+
+
+def _build_employee_payload(user: User, department_name: str | None = None) -> dict[str, object]:
+    """Serialize a User into the EmployeeRead response payload."""
+    resolved_department = department_name
+    if resolved_department is None:
+        resolved_department = user.department.name if user.department else None
+
+    return {
+        "id": user.id,
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "name": format_full_name(user.first_name, user.last_name, fallback=""),
+        "email": user.email,
+        "department_id": user.department_id,
+        "department_name": resolved_department,
+        "role": user.role,
+        "salary": user.salary,
+        "hire_date": user.hire_date,
+        "is_active": user.is_active,
+    }
 
 
 @router.post("/", response_model=EmployeeRead, status_code=status.HTTP_201_CREATED)
 async def create_employee(payload: EmployeeCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    is_hr_manager = await _is_hr_manager(current_user, db)
-    if (current_user.role or "") != "Administrator" and not is_hr_manager:
+    """Create a new employee user."""
+    can_access_directory = await _can_access_employee_directory(current_user, db)
+    if not can_access_directory:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to create employees")
 
     if payload.role and payload.role not in ALLOWED_EMPLOYEE_ROLES:
@@ -53,30 +73,21 @@ async def create_employee(payload: EmployeeCreate, db: AsyncSession = Depends(ge
     await db.commit()
     await db.refresh(user)
     
-    # Eager load department if necessary, but here we can just do a query or return None for department_name
+    # Load department name when available for the response payload.
     department_name = None
     if user.department_id:
         dept = await db.get(Department, user.department_id)
         if dept:
             department_name = dept.name
 
-    return {
-        "id": user.id,
-        "name": f"{user.first_name or ''} {user.last_name or ''}".strip(),
-        "email": user.email,
-        "department_id": user.department_id,
-        "department_name": department_name,
-        "role": user.role,
-        "salary": user.salary,
-        "hire_date": user.hire_date,
-        "is_active": user.is_active
-    }
+    return _build_employee_payload(user, department_name=department_name)
 
 
 @router.get("/", response_model=list[EmployeeRead])
 async def list_employees(search: str | None = None, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    is_hr_manager = await _is_hr_manager(current_user, db)
-    if (current_user.role or "") != "Administrator" and not is_hr_manager:
+    """Return the employee directory with optional search."""
+    can_access_directory = await _can_access_employee_directory(current_user, db)
+    if not can_access_directory:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view employee directory")
 
     query = (
@@ -101,26 +112,12 @@ async def list_employees(search: str | None = None, db: AsyncSession = Depends(g
     result = await db.execute(query)
     employees = result.scalars().all()
     
-    response_list = []
-    for emp in employees:
-        emp_dict = {
-            "id": emp.id,
-            "name": f"{emp.first_name or ''} {emp.last_name or ''}".strip(),
-            "email": emp.email,
-            "department_id": emp.department_id,
-            "department_name": emp.department.name if emp.department else None,
-            "role": emp.role,
-            "salary": emp.salary,
-            "hire_date": emp.hire_date,
-            "is_active": emp.is_active
-        }
-        response_list.append(emp_dict)
-        
-    return response_list
+    return [_build_employee_payload(emp) for emp in employees]
 
 
 @router.get("/{employee_id}", response_model=EmployeeRead)
 async def get_employee(employee_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Return an employee profile when authorized."""
     query = select(User).options(selectinload(User.department)).where(User.id == employee_id)
     result = await db.execute(query)
     user = result.scalar_one_or_none()
@@ -128,25 +125,16 @@ async def get_employee(employee_id: int, db: AsyncSession = Depends(get_db), cur
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
 
-    is_hr_manager = await _is_hr_manager(current_user, db)
-    if (current_user.role or "") == "Administrator" or is_hr_manager or current_user.email == user.email:
-        return {
-            "id": user.id,
-            "name": f"{user.first_name or ''} {user.last_name or ''}".strip(),
-            "email": user.email,
-            "department_id": user.department_id,
-            "department_name": user.department.name if user.department else None,
-            "role": user.role,
-            "salary": user.salary,
-            "hire_date": user.hire_date,
-            "is_active": user.is_active
-        }
+    can_access_directory = await _can_access_employee_directory(current_user, db)
+    if can_access_directory or current_user.email == user.email:
+        return _build_employee_payload(user)
 
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view this profile")
 
 
 @router.put("/{employee_id}", response_model=EmployeeRead)
 async def update_employee(employee_id: int, payload: EmployeeUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Update an employee profile when authorized."""
     query = select(User).options(selectinload(User.department)).where(User.id == employee_id)
     result = await db.execute(query)
     user = result.scalar_one_or_none()
@@ -154,8 +142,8 @@ async def update_employee(employee_id: int, payload: EmployeeUpdate, db: AsyncSe
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
         
-    is_hr_manager = await _is_hr_manager(current_user, db)
-    if (current_user.role or "") != "Administrator" and not is_hr_manager:
+    can_access_directory = await _can_access_employee_directory(current_user, db)
+    if not can_access_directory:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to edit employee")
 
     if payload.role and payload.role not in ALLOWED_EMPLOYEE_ROLES:
@@ -167,24 +155,15 @@ async def update_employee(employee_id: int, payload: EmployeeUpdate, db: AsyncSe
 
     await db.commit()
     await db.refresh(user)
-    
-    return {
-        "id": user.id,
-        "name": f"{user.first_name or ''} {user.last_name or ''}".strip(),
-        "email": user.email,
-        "department_id": user.department_id,
-        "department_name": user.department.name if user.department else None,
-        "role": user.role,
-        "salary": user.salary,
-        "hire_date": user.hire_date,
-        "is_active": user.is_active
-    }
+
+    return _build_employee_payload(user)
 
 
 @router.delete("/{employee_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_employee(employee_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)) -> None:
-    is_hr_manager = await _is_hr_manager(current_user, db)
-    if (current_user.role or "") != "Administrator" and not is_hr_manager:
+    """Delete an employee account when authorized."""
+    can_access_directory = await _can_access_employee_directory(current_user, db)
+    if not can_access_directory:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to delete employee")
 
     user = await db.get(User, employee_id)

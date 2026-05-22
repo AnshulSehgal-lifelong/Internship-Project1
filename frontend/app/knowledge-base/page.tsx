@@ -1,5 +1,5 @@
-// Knowledge Base & RAG Chat Page
-import KnowledgeBase from './KnowledgeBase';
+// Knowledge base page wrapper.
+import KnowledgeBase from "./KnowledgeBase";
 
 export default function KnowledgeBasePage() {
   return <KnowledgeBase />;

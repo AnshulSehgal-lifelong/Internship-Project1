@@ -8,9 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routes.auth import get_current_user
 from app.db.session import get_db
-from app.models.department import Department
-from app.models.task import Task, TaskStatus
-from app.models.user import User
+from app.db.models.department import Department
+from app.db.models.task import Task, TaskStatus
+from app.db.models.user import User
 from app.schemas.task import TaskCreate, TaskRead
 
 
@@ -18,6 +18,7 @@ router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 
 def _ensure_manager(current_user: User, department: Department) -> None:
+    """Ensure the current user is the department manager."""
     if department.manager_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to assign tasks")
 
@@ -28,6 +29,7 @@ async def create_task(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Task:
+    """Create a task assigned by the department manager."""
     if current_user.department_id is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Assign a department before creating tasks")
 
@@ -63,6 +65,7 @@ async def list_my_tasks(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[Task]:
+    """Return tasks assigned to the current user."""
     result = await db.execute(
         select(Task).where(Task.assigned_to == current_user.id).order_by(Task.created_at.desc())
     )
@@ -74,6 +77,7 @@ async def list_department_tasks(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[Task]:
+    """Return tasks for the current user's department."""
     if current_user.department_id is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No department assigned")
 
@@ -95,6 +99,7 @@ async def complete_task(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Task:
+    """Mark a task as completed when owned by the user."""
     task = await db.get(Task, task_id)
     if task is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from app.models.task import TaskStatus
+from app.db.models.task import TaskStatus
 from app.schemas.common import ORMBaseModel
 
 

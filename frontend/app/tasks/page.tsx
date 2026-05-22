@@ -1,7 +1,6 @@
-"use client";
+// Tasks page wrapper.
+import TasksPage from "./TasksPage";
 
-import Tasks from "./Tasks";
-
-export default function TasksPage() {
-  return <Tasks />;
+export default function TasksRoutePage() {
+  return <TasksPage />;
 }

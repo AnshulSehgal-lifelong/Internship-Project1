@@ -4,7 +4,7 @@ import enum
 from sqlalchemy import BigInteger, DateTime, Enum, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base
+from app.db.base import Base
 
 
 class JobApplicationStatus(str, enum.Enum):

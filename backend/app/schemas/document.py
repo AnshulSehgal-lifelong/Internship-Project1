@@ -1,7 +1,7 @@
 from datetime import datetime
 import uuid
 
-from app.models.document import DocumentStatus, DocumentType
+from app.db.models.document import DocumentStatus, DocumentType
 from app.schemas.common import ORMBaseModel
 
 
