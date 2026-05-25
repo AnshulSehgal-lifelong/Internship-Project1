@@ -6,7 +6,7 @@ from pathlib import Path
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routes.auth import get_current_user
@@ -15,7 +15,9 @@ from app.core.config import settings
 from app.db.session import AsyncSessionLocal, get_db
 from app.db.models.department import Department
 from app.db.models.document import Document, DocumentStatus, DocumentType
+from app.db.models.document_chunk import DocumentChunk
 from app.db.models.user import User
+from app.rag.ingestion import ingest_document_chunks
 from app.schemas.document import DocumentRead
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -54,21 +56,23 @@ async def _can_manage_policies(current_user: User, db: AsyncSession) -> bool:
     return department is not None and is_hr_department(department.name)
 
 
-async def _trigger_ai_pipeline(document_id: uuid.UUID, storage_path: str) -> None:
-    """Mock AI pipeline that updates document status fields."""
+async def _trigger_ai_pipeline(document_id: uuid.UUID) -> None:
+    """Run ingestion pipeline: extract, chunk, embed, and persist vectors."""
     try:
         async with AsyncSessionLocal() as session:
             document = await session.get(Document, document_id)
             if document is None:
                 return
+
             document.status = DocumentStatus.processing
             await session.commit()
 
-            # Mock AI pipeline: mark indexed and assign a placeholder vector collection id.
+            chunk_count = await ingest_document_chunks(session, document)
             document.status = DocumentStatus.indexed
-            document.vector_collection_id = str(uuid.uuid4())
+            document.vector_collection_id = f"policy-rag:{chunk_count}"
             await session.commit()
     except Exception:
+        logger.exception("Document ingestion failed for document_id=%s", document_id)
         async with AsyncSessionLocal() as session:
             document = await session.get(Document, document_id)
             if document is None:
@@ -167,7 +171,7 @@ async def upload_document(
         logger.exception("Failed to store document metadata")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to store metadata") from exc
 
-    background_tasks.add_task(_trigger_ai_pipeline, document.id, document.storage_path)
+    background_tasks.add_task(_trigger_ai_pipeline, document.id)
     return document
 
 
@@ -189,6 +193,7 @@ async def delete_document(
         if (current_user.role or "") != "Administrator":
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to delete resumes")
 
+    await db.execute(delete(DocumentChunk).where(DocumentChunk.document_id == document_id))
     await db.delete(document)
     await db.commit()
 

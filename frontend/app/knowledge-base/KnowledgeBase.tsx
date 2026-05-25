@@ -8,13 +8,14 @@ import {
   Link2,
   MessageSquare,
   Send,
+  Square,
   Trash2,
   Upload,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
-import { api } from "@/lib/api";
+import { API_BASE_URL, api } from "@/lib/api";
 import { useAuth } from "@/components/auth-context";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -28,15 +29,260 @@ interface DocumentRecord {
 }
 
 interface ChatItem {
+  id: string;
   role: "assistant" | "user";
   content: string;
   source: string | null;
+}
+
+type AssistantBlock =
+  | { type: "paragraph"; text: string }
+  | { type: "heading"; level: 1 | 2 | 3 | 4 | 5 | 6; text: string }
+  | { type: "bulletList"; items: string[] }
+  | { type: "orderedList"; items: string[] }
+  | { type: "quote"; text: string }
+  | { type: "separator" }
+  | { type: "code"; text: string };
+
+function renderInlineText(text: string) {
+  const parts: React.ReactNode[] = [];
+  const boldPattern = /\*\*(.+?)\*\*/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = boldPattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+
+    parts.push(
+      <strong key={match.index} className="font-semibold text-foreground">
+        {match[1]}
+      </strong>,
+    );
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+
+  return parts.length > 0 ? parts : text;
+}
+
+function parseAssistantBlocks(content: string): AssistantBlock[] {
+  const lines = content.replace(/\r\n/g, "\n").split("\n");
+  const blocks: AssistantBlock[] = [];
+  const paragraphLines: string[] = [];
+  const bulletItems: string[] = [];
+  const orderedItems: string[] = [];
+  const codeLines: string[] = [];
+  let inCodeBlock = false;
+  let listType: "bullet" | "ordered" | null = null;
+
+  const flushParagraph = () => {
+    const text = paragraphLines.join(" ").trim();
+    if (text) {
+      blocks.push({ type: "paragraph", text });
+    }
+    paragraphLines.length = 0;
+  };
+
+  const flushList = () => {
+    if (listType === "bullet" && bulletItems.length > 0) {
+      blocks.push({ type: "bulletList", items: [...bulletItems] });
+    }
+    if (listType === "ordered" && orderedItems.length > 0) {
+      blocks.push({ type: "orderedList", items: [...orderedItems] });
+    }
+    bulletItems.length = 0;
+    orderedItems.length = 0;
+    listType = null;
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+
+    if (inCodeBlock) {
+      if (line.startsWith("```")) {
+        blocks.push({ type: "code", text: codeLines.join("\n") });
+        codeLines.length = 0;
+        inCodeBlock = false;
+      } else {
+        codeLines.push(rawLine);
+      }
+      continue;
+    }
+
+    if (line.startsWith("```")) {
+      flushParagraph();
+      flushList();
+      inCodeBlock = true;
+      continue;
+    }
+
+    if (!line) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+
+    if (line === "***" || line === "---") {
+      flushParagraph();
+      flushList();
+      blocks.push({ type: "separator" });
+      continue;
+    }
+
+    const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
+    if (headingMatch) {
+      flushParagraph();
+      flushList();
+      blocks.push({
+        type: "heading",
+        level: headingMatch[1].length as 1 | 2 | 3 | 4 | 5 | 6,
+        text: headingMatch[2],
+      });
+      continue;
+    }
+
+    const bulletMatch = line.match(/^[-*•]\s+(.*)$/);
+    if (bulletMatch) {
+      flushParagraph();
+      if (listType && listType !== "bullet") {
+        flushList();
+      }
+      listType = "bullet";
+      bulletItems.push(bulletMatch[1]);
+      continue;
+    }
+
+    const orderedMatch = line.match(/^\d+[.)]\s+(.*)$/);
+    if (orderedMatch) {
+      flushParagraph();
+      if (listType && listType !== "ordered") {
+        flushList();
+      }
+      listType = "ordered";
+      orderedItems.push(orderedMatch[1]);
+      continue;
+    }
+
+    const quoteMatch = line.match(/^>\s+(.*)$/);
+    if (quoteMatch) {
+      flushParagraph();
+      flushList();
+      blocks.push({ type: "quote", text: quoteMatch[1] });
+      continue;
+    }
+
+    paragraphLines.push(line);
+  }
+
+  if (inCodeBlock && codeLines.length > 0) {
+    blocks.push({ type: "code", text: codeLines.join("\n") });
+  }
+
+  flushParagraph();
+  flushList();
+
+  return blocks;
+}
+
+function renderAssistantContent(content: string) {
+  const blocks = parseAssistantBlocks(content);
+
+  if (blocks.length === 0) {
+    return <p className="whitespace-pre-wrap wrap-break-word">{content}</p>;
+  }
+
+  return (
+    <div className="space-y-2">
+      {blocks.map((block, index) => {
+        if (block.type === "heading") {
+          return (
+            <div
+              key={index}
+              className={cn(
+                "font-semibold text-foreground",
+                block.level === 1 && "text-base md:text-lg",
+                block.level === 2 && "text-sm",
+                block.level === 3 && "text-[13px] uppercase tracking-wide text-primary",
+                block.level === 4 && "text-xs",
+                block.level === 5 && "text-[11px] italic text-muted-foreground",
+                block.level === 6 && "text-[10px] uppercase tracking-wide text-muted-foreground",
+              )}
+            >
+              {renderInlineText(block.text)}
+            </div>
+          );
+        }
+
+        if (block.type === "bulletList") {
+          return (
+            <ul key={index} className="space-y-1 pl-4">
+              {block.items.map((item, itemIndex) => (
+                <li key={itemIndex} className="list-disc whitespace-pre-wrap wrap-break-word">
+                  {renderInlineText(item)}
+                </li>
+              ))}
+            </ul>
+          );
+        }
+
+        if (block.type === "orderedList") {
+          return (
+            <ol key={index} className="space-y-1 pl-4">
+              {block.items.map((item, itemIndex) => (
+                <li key={itemIndex} className="list-decimal whitespace-pre-wrap wrap-break-word">
+                  {renderInlineText(item)}
+                </li>
+              ))}
+            </ol>
+          );
+        }
+
+        if (block.type === "quote") {
+          return (
+            <div
+              key={index}
+              className="border-l-2 border-primary/30 pl-3 text-muted-foreground italic"
+            >
+              {renderInlineText(block.text)}
+            </div>
+          );
+        }
+
+        if (block.type === "separator") {
+          return <hr key={index} className="my-3 border-border/80" />;
+        }
+
+        if (block.type === "code") {
+          return (
+            <pre
+              key={index}
+              className="overflow-x-auto rounded-xl bg-slate-950 px-3 py-2 text-[11px] leading-relaxed text-slate-100"
+            >
+              <code>{block.text}</code>
+            </pre>
+          );
+        }
+
+        return (
+          <p key={index} className="whitespace-pre-wrap wrap-break-word">
+            {renderInlineText(block.text)}
+          </p>
+        );
+      })}
+    </div>
+  );
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const INITIAL_MESSAGES: ChatItem[] = [
   {
+    id: "welcome-message",
     role: "assistant",
     content: "Hello! I'm your HR AI assistant. Ask me anything about company policies.",
     source: null,
@@ -116,7 +362,11 @@ function ChatBubble({ message }: { message: ChatItem }) {
             : "rounded-tl-sm bg-secondary text-foreground"
         )}
       >
-        {message.content}
+        {isUser ? (
+          <p className="whitespace-pre-wrap wrap-break-word">{message.content}</p>
+        ) : (
+          renderAssistantContent(message.content)
+        )}
       </div>
       {message.source && (
         <div className="flex items-center gap-1 rounded-lg bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold text-emerald-600">
@@ -134,6 +384,7 @@ function ChatPanel({
   isTyping,
   onInputChange,
   onSend,
+  onStop,
   onClose,
 }: {
   messages: ChatItem[];
@@ -141,6 +392,7 @@ function ChatPanel({
   isTyping: boolean;
   onInputChange: (value: string) => void;
   onSend: () => void;
+  onStop: () => void;
   onClose: () => void;
 }) {
   const bottomRef = React.useRef<HTMLDivElement>(null);
@@ -192,20 +444,26 @@ function ChatPanel({
         {/* Messages */}
         <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
           {messages.map((m, i) => (
-            <ChatBubble key={i} message={m} />
+            <ChatBubble key={m.id ?? i} message={m} />
           ))}
           {isTyping && (
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span className="flex gap-1">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5">
                 {[0, 1, 2].map((d) => (
-                  <span
+                  <motion.span
                     key={d}
-                    className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground/60"
-                    style={{ animationDelay: `${d * 0.15}s` }}
+                    animate={{ y: [0, -5, 0] }}
+                    transition={{
+                      duration: 0.9,
+                      repeat: Number.POSITIVE_INFINITY,
+                      ease: "easeInOut",
+                      delay: d * 0.12,
+                    }}
+                    className="h-2 w-2 rounded-full bg-primary/70"
                   />
                 ))}
               </span>
-              AI is thinking…
+              Generating response…
             </div>
           )}
           <div ref={bottomRef} />
@@ -222,13 +480,26 @@ function ChatPanel({
               placeholder="Ask a question…"
               className="flex-1 bg-transparent text-xs focus:outline-none"
             />
-            <button
-              onClick={onSend}
-              disabled={isTyping || !input.trim()}
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
-            >
-              <Send size={13} />
-            </button>
+            {isTyping ? (
+              <button
+                onClick={onStop}
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-destructive text-destructive-foreground transition-opacity hover:opacity-90"
+                aria-label="Stop generation"
+                title="Stop generation"
+              >
+                <Square size={12} />
+              </button>
+            ) : (
+              <button
+                onClick={onSend}
+                disabled={!input.trim()}
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
+                aria-label="Send message"
+                title="Send message"
+              >
+                <Send size={13} />
+              </button>
+            )}
           </div>
         </div>
       </motion.div>
@@ -250,6 +521,7 @@ export default function KnowledgeBase() {
   const [error, setError] = React.useState<string | null>(null);
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const activeChatRequestRef = React.useRef<AbortController | null>(null);
 
   // ─── Permissions ────────────────────────────────────────────────────────
 
@@ -265,21 +537,44 @@ export default function KnowledgeBase() {
   // ─── Data fetching ───────────────────────────────────────────────────────
 
   const loadDocuments = React.useCallback(async () => {
-    try {
-      const data = await api.get<DocumentRecord[]>("/documents?document_type=policy");
-      setDocuments(data ?? []);
-      setError(null);
-    } catch (err) {
-      console.error("Failed to fetch documents:", err);
-      setError("Could not load documents.");
-    } finally {
-      setIsLoading(false);
-    }
+    const data = await api.get<DocumentRecord[]>("/documents?document_type=policy");
+    return data ?? [];
   }, []);
 
   React.useEffect(() => {
-    void loadDocuments();
+    let isMounted = true;
+
+    void (async () => {
+      try {
+        const data = await loadDocuments();
+        if (!isMounted) {
+          return;
+        }
+
+        setDocuments(data);
+        setError(null);
+      } catch (err) {
+        console.error("Failed to fetch documents:", err);
+        if (isMounted) {
+          setError("Could not load documents.");
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
   }, [loadDocuments]);
+
+  React.useEffect(() => {
+    return () => {
+      activeChatRequestRef.current?.abort();
+    };
+  }, []);
 
   // ─── Handlers ───────────────────────────────────────────────────────────
 
@@ -291,7 +586,9 @@ export default function KnowledgeBase() {
       formData.append("file", file);
       formData.append("document_type", "policy");
       await api.upload("/documents/upload", formData);
-      await loadDocuments();
+      const data = await loadDocuments();
+      setDocuments(data);
+      setError(null);
     } catch (err) {
       console.error("Upload failed:", err);
       setError("Could not upload document.");
@@ -303,7 +600,9 @@ export default function KnowledgeBase() {
   const handleDelete = async (id: string) => {
     try {
       await api.delete(`/documents/${id}`);
-      await loadDocuments();
+      const data = await loadDocuments();
+      setDocuments(data);
+      setError(null);
     } catch (err) {
       console.error("Delete failed:", err);
       setError("Could not delete document.");
@@ -311,31 +610,114 @@ export default function KnowledgeBase() {
   };
 
   const handleSend = async () => {
-    if (!input.trim()) return;
-    const userMessage: ChatItem = { role: "user", content: input, source: null };
-    setMessages((prev) => [...prev, userMessage]);
+    const prompt = input.trim();
+    if (!prompt || isTyping) return;
+
+    const userMessage: ChatItem = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: prompt,
+      source: null,
+    };
+    const assistantMessageId = crypto.randomUUID();
+    const history = [...messages, userMessage]
+      .filter((message) => message.content.trim())
+      .map(({ role, content }) => ({ role, content }));
+
+    activeChatRequestRef.current?.abort();
+    const controller = new AbortController();
+    activeChatRequestRef.current = controller;
+
+    setMessages((prev) => [
+      ...prev,
+      userMessage,
+      {
+        id: assistantMessageId,
+        role: "assistant",
+        content: "",
+        source: null,
+      },
+    ]);
     setInput("");
     setIsTyping(true);
+
     try {
-      const res = await api.post<{ reply: string }>("/ai/chat", { message: input });
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: res.reply, source: "Backend AI" },
-      ]);
+      const response = await fetch(`${API_BASE_URL}/ai/chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ message: prompt, messages: history }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok || !response.body) {
+        const errorText = await response.text().catch(() => "");
+        throw new Error(errorText || `API error: ${response.statusText}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+
+        const chunk = decoder.decode(value, { stream: true });
+        if (!chunk) {
+          continue;
+        }
+
+        setMessages((prev) =>
+          prev.map((message) =>
+            message.id === assistantMessageId
+              ? {
+                  ...message,
+                  content: message.content + chunk,
+                }
+              : message,
+          ),
+        );
+      }
+
+      setMessages((prev) =>
+        prev.map((message) =>
+          message.id === assistantMessageId
+            ? {
+                ...message,
+                source: "Hr AI Assistant",
+              }
+            : message,
+        ),
+      );
     } catch (err) {
+      if ((err as DOMException | null)?.name === "AbortError") {
+        return;
+      }
+
       console.error("Chat failed:", err);
       setMessages((prev) => [
-        ...prev,
+        ...prev.filter((message) => message.id !== assistantMessageId),
         {
+          id: crypto.randomUUID(),
           role: "assistant",
           content: "AI assistant is currently unavailable. Please check the backend connection.",
           source: "System",
         },
       ]);
     } finally {
+      if (activeChatRequestRef.current === controller) {
+        activeChatRequestRef.current = null;
+      }
       setIsTyping(false);
     }
   };
+
+  const handleStop = React.useCallback(() => {
+    activeChatRequestRef.current?.abort();
+  }, []);
 
   // ─── Loading state ───────────────────────────────────────────────────────
 
@@ -435,6 +817,7 @@ export default function KnowledgeBase() {
             isTyping={isTyping}
             onInputChange={setInput}
             onSend={handleSend}
+            onStop={handleStop}
             onClose={() => setIsChatOpen(false)}
           />
         )}
