@@ -202,8 +202,9 @@ export default function EmployeeDirectory() {
   const role = user?.role || "";
   const departmentName = user?.department_name ?? null;
   const isAdmin = role === "Administrator";
+  const isHrUser = role === "HR";
   const isHrManager = role === "Manager" && ["hr", "human resources"].includes(departmentName?.trim().toLowerCase() ?? "");
-  const canManage = isAdmin || isHrManager;
+  const canManage = isAdmin || isHrUser || isHrManager;
 
   // ─── Effects ──────────────────────────────────────────────────────────────
 

@@ -1,3 +1,4 @@
+// Jobs page wrapper.
 import Jobs from "./Jobs";
 
 export default function JobsPage() {

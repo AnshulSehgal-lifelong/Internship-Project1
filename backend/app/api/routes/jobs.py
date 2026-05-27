@@ -12,56 +12,56 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.core.config import settings
-from app.models.department import Department
-from app.models.job_application import JobApplication, JobApplicationStatus
-from app.models.job_opening import JobOpening
+from app.db.models.department import Department
+from app.db.models.job_application import JobApplication, JobApplicationStatus
+from app.db.models.job_opening import JobOpening
 from app.schemas.job_application import JobApplicationRead
 from app.schemas.job_opening import JobOpeningCreate, JobOpeningRead, JobOpeningUpdate
 from app.api.routes.auth import get_current_user
-from app.models.user import User
+from app.api.routes.utils import is_hr_department
+from app.db.models.user import User
 
 
 router = APIRouter(prefix="/job-openings", tags=["job-openings"])
 
 CHUNK_SIZE_BYTES = 1024 * 1024
 
-
-def _is_hr_department(name: str | None) -> bool:
-    if not name:
-        return False
-    normalized = name.strip().lower()
-    return normalized in {"hr", "human resources"}
-
-
 async def _require_hr_access(current_user: User, db: AsyncSession) -> None:
-    if (current_user.role or "") == "Administrator":
+    """Ensure the current user can manage recruitment data."""
+    role = current_user.role or ""
+    if role == "Administrator" or role == "HR":
         return
-    if (current_user.role or "") != "Manager" or current_user.department_id is None:
+    if role != "Manager" or current_user.department_id is None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to manage recruitment")
     department = await db.get(Department, current_user.department_id)
-    if department is None or not _is_hr_department(department.name):
+    if department is None or not is_hr_department(department.name):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to manage recruitment")
 
 
 def _parse_allowed_mime_types() -> set[str]:
+    """Return the allowed resume MIME types from settings."""
     return {value.strip().lower() for value in settings.allowed_mime_types.split(",") if value.strip()}
 
 
 def _get_resume_root() -> Path:
+    """Return the base resume directory for uploads."""
     base_dir = Path(__file__).resolve().parents[3]
     return base_dir / "resumes"
 
 
 def _build_resume_dir(resume_root: Path, timestamp: datetime, job_opening_id: int) -> Path:
+    """Build the date-based resume directory for a job opening."""
     return resume_root / f"job-{job_opening_id}" / f"{timestamp.year:04d}" / f"{timestamp.month:02d}"
 
 
 def _sanitize_filename(value: str) -> str:
+    """Return a safe, lowercase filename fragment."""
     cleaned = re.sub(r"[^a-zA-Z0-9_-]+", "-", value).strip("-").lower()
     return cleaned[:60] if cleaned else "candidate"
 
 
 def _delete_resume_file(resume_path: str) -> None:
+    """Delete resume and any generated preview file."""
     path = Path(resume_path)
     try:
         if path.exists():
@@ -74,6 +74,7 @@ def _delete_resume_file(resume_path: str) -> None:
 
 
 def _get_resume_preview_path(resume_path: Path, mime_type: str) -> Path:
+    """Return or generate a PDF preview for a resume."""
     if mime_type == "application/pdf":
         return resume_path
 
@@ -102,12 +103,37 @@ def _get_resume_preview_path(resume_path: Path, mime_type: str) -> Path:
     return preview_path
 
 
+async def _save_upload_file(upload: UploadFile, destination: Path, max_bytes: int) -> int:
+    """Write the upload to disk and return the size in bytes."""
+    size_bytes = 0
+
+    try:
+        with destination.open("wb") as output_file:
+            while True:
+                chunk = await upload.read(CHUNK_SIZE_BYTES)
+                if not chunk:
+                    break
+                size_bytes += len(chunk)
+                if size_bytes > max_bytes:
+                    raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="File too large")
+                output_file.write(chunk)
+    except HTTPException:
+        destination.unlink(missing_ok=True)
+        raise
+    except Exception as exc:  # noqa: BLE001
+        destination.unlink(missing_ok=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to save file") from exc
+
+    return size_bytes
+
+
 class ApplicationDecision(BaseModel):
     status: Literal["selected", "rejected"]
 
 
 @router.post("/", response_model=JobOpeningRead, status_code=status.HTTP_201_CREATED)
 async def create_job_opening(payload: JobOpeningCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)) -> JobOpening:
+    """Create a job opening."""
     await _require_hr_access(current_user, db)
 
     job_opening = JobOpening(**payload.model_dump())
@@ -119,6 +145,7 @@ async def create_job_opening(payload: JobOpeningCreate, db: AsyncSession = Depen
 
 @router.get("/", response_model=list[JobOpeningRead])
 async def list_job_openings(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)) -> list[JobOpening]:
+    """List job openings for HR users."""
     await _require_hr_access(current_user, db)
 
     result = await db.execute(select(JobOpening).order_by(JobOpening.id))
@@ -127,12 +154,14 @@ async def list_job_openings(db: AsyncSession = Depends(get_db), current_user: Us
 
 @router.get("/public", response_model=list[JobOpeningRead])
 async def list_public_job_openings(db: AsyncSession = Depends(get_db)) -> list[JobOpening]:
+    """List public job openings for candidates."""
     result = await db.execute(select(JobOpening).order_by(JobOpening.id))
     return list(result.scalars().all())
 
 
 @router.get("/{job_opening_id}", response_model=JobOpeningRead)
 async def get_job_opening(job_opening_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)) -> JobOpening:
+    """Fetch a job opening for HR users."""
     await _require_hr_access(current_user, db)
 
     job_opening = await db.get(JobOpening, job_opening_id)
@@ -147,6 +176,7 @@ async def list_job_applications(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[JobApplication]:
+    """List applications for a specific opening."""
     await _require_hr_access(current_user, db)
 
     job_opening = await db.get(JobOpening, job_opening_id)
@@ -163,6 +193,7 @@ async def list_job_applications(
 async def update_job_opening(
     job_opening_id: int, payload: JobOpeningUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)
 ) -> JobOpening:
+    """Update a job opening."""
     job_opening = await db.get(JobOpening, job_opening_id)
     if job_opening is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job opening not found")
@@ -178,6 +209,7 @@ async def update_job_opening(
 
 @router.delete("/{job_opening_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_job_opening(job_opening_id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)) -> None:
+    """Delete a job opening and its applications."""
     await _require_hr_access(current_user, db)
 
     job_opening = await db.get(JobOpening, job_opening_id)
@@ -188,7 +220,7 @@ async def delete_job_opening(job_opening_id: int, db: AsyncSession = Depends(get
     applications = list(result.scalars().all())
     for application in applications:
         _delete_resume_file(application.resume_path)
-        db.delete(application)
+        await db.delete(application)
 
     await db.delete(job_opening)
     await db.commit()
@@ -206,6 +238,7 @@ async def apply_job_opening(
     resume: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
 ) -> JobApplication:
+    """Submit a job application with a resume upload."""
     job_opening = await db.get(JobOpening, job_opening_id)
     if job_opening is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job opening not found")
@@ -227,26 +260,9 @@ async def apply_job_opening(
     resume_path = resume_dir / stored_filename
 
     max_bytes = settings.max_upload_size_mb * 1024 * 1024
-    size_bytes = 0
 
     try:
-        with resume_path.open("wb") as output_file:
-            while True:
-                chunk = await resume.read(CHUNK_SIZE_BYTES)
-                if not chunk:
-                    break
-                size_bytes += len(chunk)
-                if size_bytes > max_bytes:
-                    raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="File too large")
-                output_file.write(chunk)
-    except HTTPException:
-        if resume_path.exists():
-            resume_path.unlink(missing_ok=True)
-        raise
-    except Exception as exc:  # noqa: BLE001
-        if resume_path.exists():
-            resume_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to save file") from exc
+        size_bytes = await _save_upload_file(resume, resume_path, max_bytes)
     finally:
         await resume.close()
 
@@ -283,6 +299,7 @@ async def preview_application_resume(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Return an inline PDF preview for a resume."""
     await _require_hr_access(current_user, db)
 
     application = await db.get(JobApplication, application_id)
@@ -305,6 +322,7 @@ async def decide_application(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> JobApplication:
+    """Select or reject an application."""
     await _require_hr_access(current_user, db)
 
     application = await db.get(JobApplication, application_id)
@@ -332,6 +350,7 @@ async def cleanup_rejected_applications(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> dict:
+    """Delete rejected applications older than the retention window."""
     await _require_hr_access(current_user, db)
 
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
@@ -345,7 +364,7 @@ async def cleanup_rejected_applications(
     applications = list(result.scalars().all())
     for application in applications:
         _delete_resume_file(application.resume_path)
-        db.delete(application)
+        await db.delete(application)
 
     await db.commit()
     return {"deleted": len(applications)}

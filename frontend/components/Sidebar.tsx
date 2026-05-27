@@ -32,7 +32,7 @@ const navItems = [
   { name: "System", href: "/system", icon: Settings },
 ];
 
-const HR_DEPARTMENTS = new Set(["hr", "human resources"]);
+const HR_DEPARTMENTS = new Set(["HR", "human resources"]);
 
 function isHrDepartment(name?: string | null) {
   if (!name) return false;
@@ -51,10 +51,11 @@ export default function Sidebar() {
     if (!user) return [];
     const role = user.role || "";
     const isAdmin = role === "Administrator";
+    const isHrUser = role === "HR";
     const isHrManager = role === "Manager" && isHrDepartment(user.department_name);
     const namesToSkip = new Set(['Tasks', 'My Department']);
     if (isAdmin) return navItems.filter(item => !namesToSkip.has(item.name));
-    if (isHrManager) {
+    if (isHrUser || isHrManager) {
       return navItems.filter(i => ["Employee Directory", "Recruitment", "Knowledge Base", "Dashboard", "Tasks", "My Department"].includes(i.name));
     }
     // other employees: only Knowledge Base and dashboard

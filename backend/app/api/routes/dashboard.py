@@ -4,21 +4,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.db.session import get_db
-from app.models.user import User
-from app.models.department import Department
-from app.models.job_opening import JobOpening
+from app.db.models.user import User
+from app.db.models.department import Department
+from app.db.models.job_opening import JobOpening
 from app.api.routes.auth import get_current_user
+from app.api.routes.utils import format_full_name
 
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 
-def build_activity_record(user: User, index: int) -> dict[str, object]:
-    first_initial = user.first_name[0] if user.first_name else "E"
-    last_initial = user.last_name[0] if user.last_name else ""
-    initials = f"{first_initial}{last_initial}".upper()
+def _build_initials(first_name: str | None, last_name: str | None) -> str:
+    """Return uppercase initials for a user."""
+    first_initial = first_name[0] if first_name else "E"
+    last_initial = last_name[0] if last_name else ""
+    return f"{first_initial}{last_initial}".upper()
 
-    full_name = f"{user.first_name or ''} {user.last_name or ''}".strip() or "Unknown"
+
+def build_activity_record(user: User, index: int) -> dict[str, object]:
+    """Build the activity log response payload for a user."""
+    initials = _build_initials(user.first_name, user.last_name)
+    full_name = format_full_name(user.first_name, user.last_name)
     return {
         "id": user.id,
         "initials": initials,
@@ -44,6 +50,7 @@ async def fetch_activity_rows(
     order: str = "desc",
     limit: int | None = None,
 ) -> list[User]:
+    """Return users for activity logs with filtering and sorting."""
     query = (
         select(User)
         .options(selectinload(User.department))
@@ -83,9 +90,15 @@ async def fetch_activity_rows(
     elif sort_key == "department":
         order_columns = [func.lower(Department.name), User.id]
     elif sort_key == "status":
-        order_columns = [User.is_active.desc() if order_is_desc else User.is_active.asc(), User.id.desc() if order_is_desc else User.id.asc()]
+        order_columns = [
+            User.is_active.desc() if order_is_desc else User.is_active.asc(),
+            User.id.desc() if order_is_desc else User.id.asc(),
+        ]
     else:
-        order_columns = [User.hire_date.desc() if order_is_desc else User.hire_date.asc(), User.id.desc() if order_is_desc else User.id.asc()]
+        order_columns = [
+            User.hire_date.desc() if order_is_desc else User.hire_date.asc(),
+            User.id.desc() if order_is_desc else User.id.asc(),
+        ]
 
     query = query.order_by(*order_columns)
 
@@ -98,19 +111,19 @@ async def fetch_activity_rows(
 
 @router.get("/summary")
 async def get_dashboard_summary(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    # Count employees (now users)
+    """Return summary metrics for the dashboard."""
     employee_count_result = await db.execute(select(func.count(User.id)))
     employee_count = employee_count_result.scalar() or 0
 
-    # Count departments
+    # Count departments.
     department_count_result = await db.execute(select(func.count(Department.id)))
     department_count = department_count_result.scalar() or 0
 
-    # Count open jobs
+    # Count open jobs.
     job_count_result = await db.execute(select(func.count(JobOpening.id)))
     job_count = job_count_result.scalar() or 0
 
-    # Get recent 5 hires
+    # Get recent hires.
     recent_employees = await fetch_activity_rows(db, sort_by="recent", order="desc", limit=5)
     activity = [build_activity_record(user, i) for i, user in enumerate(recent_employees)]
 
@@ -133,6 +146,7 @@ async def list_activity_logs(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Return activity logs for dashboard filters."""
     if current_user is None:
         raise HTTPException(status_code=http_status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
 

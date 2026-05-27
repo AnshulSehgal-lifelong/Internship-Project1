@@ -9,9 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.session import get_db
-from app.models.department import Department
-from app.models.user import User
-from app.schemas.auth import Token, UserCreate, UserRead, LoginRequest
+from app.db.models.department import Department
+from app.db.models.user import User
+from app.schemas.auth import LoginRequest, Token, UserRead
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -19,20 +19,24 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.api_v1_prefix}/auth/to
 
 
 def hash_password(password: str) -> str:
+    """Hash a plain-text password using bcrypt."""
     return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(password: str, hashed_password: str) -> bool:
+    """Return True when the password matches the stored hash."""
     return bcrypt.checkpw(password.encode("utf-8"), hashed_password.encode("utf-8"))
 
 
 def create_access_token(subject: str) -> str:
+    """Create a JWT access token for the subject email."""
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
     payload = {"sub": subject, "exp": expire}
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
 
 async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)) -> User:
+    """Return the authenticated user from the access token."""
     credentials_error = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -56,6 +60,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
 async def login_for_access_token(
     form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)
 ) -> Token:
+    """OAuth2-compatible token login endpoint."""
     result = await db.execute(select(User).where(User.email == form_data.username))
     user = result.scalar_one_or_none()
     if user is None or not verify_password(form_data.password, user.hashed_password):
@@ -70,6 +75,7 @@ async def login_for_access_token(
 
 @router.post("/login", response_model=Token)
 async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)) -> Token:
+    """JSON login endpoint for the frontend."""
     result = await db.execute(select(User).where(User.email == payload.email))
     user = result.scalar_one_or_none()
     if user is None or not verify_password(payload.password, user.hashed_password):
@@ -83,6 +89,7 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)) -> To
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 async def logout(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Mark the current user as inactive."""
     current_user.is_active = False
     await db.commit()
     return None
@@ -93,6 +100,7 @@ async def read_me(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> UserRead:
+    """Return the current user's profile details."""
     department_name = None
     if current_user.department_id is not None:
         department = await db.get(Department, current_user.department_id)
