@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { API_BASE_URL, api } from "@/lib/api";
 import { useAuth } from "@/components/auth-context";
+import FilePreviewModal from "@/components/FilePreviewModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -294,10 +295,12 @@ const INITIAL_MESSAGES: ChatItem[] = [
 function DocumentCard({
   doc,
   canManage,
+  onPreview,
   onDelete,
 }: {
   doc: DocumentRecord;
   canManage: boolean;
+  onPreview: (doc: DocumentRecord) => void;
   onDelete: (id: string) => void;
 }) {
   return (
@@ -314,14 +317,6 @@ function DocumentCard({
           <span className="rounded-lg bg-secondary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
             {doc.mime_type || "doc"}
           </span>
-          {canManage && (
-            <button
-              onClick={() => onDelete(doc.id)}
-              className="rounded-lg border border-border p-1.5 text-muted-foreground transition-colors hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
-            >
-              <Trash2 size={13} />
-            </button>
-          )}
         </div>
       </div>
 
@@ -340,6 +335,23 @@ function DocumentCard({
             {doc.status}
           </span>
         </p>
+      </div>
+
+      <div className="mt-auto flex items-center justify-between gap-3">
+        <button
+          onClick={() => onPreview(doc)}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-secondary px-3 py-2 text-xs font-semibold text-foreground transition-colors hover:bg-secondary/80"
+        >
+          Preview
+        </button>
+        {canManage && (
+          <button
+            onClick={() => onDelete(doc.id)}
+            className="rounded-lg border border-border p-1.5 text-muted-foreground transition-colors hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+          >
+            <Trash2 size={13} />
+          </button>
+        )}
       </div>
     </motion.div>
   );
@@ -519,9 +531,15 @@ export default function KnowledgeBase() {
   const [isTyping, setIsTyping] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = React.useState(false);
+  const [isPreviewLoading, setIsPreviewLoading] = React.useState(false);
+  const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
+  const [previewError, setPreviewError] = React.useState<string | null>(null);
+  const [previewDoc, setPreviewDoc] = React.useState<DocumentRecord | null>(null);
 
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const activeChatRequestRef = React.useRef<AbortController | null>(null);
+  const previewUrlRef = React.useRef<string | null>(null);
 
   // ─── Permissions ────────────────────────────────────────────────────────
 
@@ -575,6 +593,45 @@ export default function KnowledgeBase() {
       activeChatRequestRef.current?.abort();
     };
   }, []);
+
+  const closePreview = React.useCallback(() => {
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+    }
+    setPreviewUrl(null);
+    setPreviewError(null);
+    setIsPreviewLoading(false);
+    setIsPreviewOpen(false);
+    setPreviewDoc(null);
+  }, []);
+
+  const openPreview = React.useCallback(async (doc: DocumentRecord) => {
+    setPreviewDoc(doc);
+    setIsPreviewOpen(true);
+    setPreviewError(null);
+    setIsPreviewLoading(true);
+    try {
+      const blob = await api.fetchBlob(`/documents/${doc.id}/preview`);
+      if (previewUrlRef.current) {
+        URL.revokeObjectURL(previewUrlRef.current);
+      }
+      previewUrlRef.current = URL.createObjectURL(blob);
+      setPreviewUrl(previewUrlRef.current);
+    } catch (err) {
+      console.error("Failed to load document preview:", err);
+      setPreviewError("Preview unavailable for this file.");
+      if (previewUrlRef.current) {
+        URL.revokeObjectURL(previewUrlRef.current);
+        previewUrlRef.current = null;
+      }
+      setPreviewUrl(null);
+    } finally {
+      setIsPreviewLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => () => closePreview(), [closePreview]);
 
   // ─── Handlers ───────────────────────────────────────────────────────────
 
@@ -773,6 +830,7 @@ export default function KnowledgeBase() {
                 key={doc.id}
                 doc={doc}
                 canManage={canManagePolicies}
+                onPreview={openPreview}
                 onDelete={handleDelete}
               />
             ))}
@@ -807,6 +865,18 @@ export default function KnowledgeBase() {
           </button>
         </div>
       </div>
+
+      {/* Preview modal */}
+      {isPreviewOpen && previewDoc && (
+        <FilePreviewModal
+          title="Document preview"
+          fileName={previewDoc.original_name}
+          previewUrl={previewUrl}
+          isLoading={isPreviewLoading}
+          error={previewError}
+          onClose={closePreview}
+        />
+      )}
 
       {/* Chat panel */}
       <AnimatePresence>

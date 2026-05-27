@@ -6,6 +6,7 @@ from pathlib import Path
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -43,6 +44,45 @@ def _get_storage_root() -> Path:
 def _build_storage_dir(storage_root: Path, timestamp: datetime) -> Path:
     """Build the date-based storage directory path."""
     return storage_root / f"{timestamp.year:04d}" / f"{timestamp.month:02d}"
+
+
+def _get_document_preview_path(storage_path: Path, mime_type: str) -> Path:
+    """Return or generate a PDF preview for a stored document."""
+    if mime_type == "application/pdf":
+        return storage_path
+
+    if mime_type not in {
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/msword",
+    }:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Preview not supported for this file type",
+        )
+
+    preview_dir = storage_path.parent / "preview"
+    preview_dir.mkdir(parents=True, exist_ok=True)
+    preview_path = preview_dir / f"{storage_path.stem}.pdf"
+    if preview_path.exists():
+        return preview_path
+
+    try:
+        from docx2pdf import convert
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="docx2pdf is required for document preview",
+        ) from exc
+
+    try:
+        convert(str(storage_path), str(preview_path))
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to convert document to PDF",
+        ) from exc
+
+    return preview_path
 
 
 async def _can_manage_policies(current_user: User, db: AsyncSession) -> bool:
@@ -173,6 +213,26 @@ async def upload_document(
 
     background_tasks.add_task(_trigger_ai_pipeline, document.id)
     return document
+
+
+@router.get("/{document_id}/preview")
+async def preview_document(
+    document_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _current_user: User = Depends(get_current_user),
+):
+    """Return an inline PDF preview for a document."""
+    document = await db.get(Document, document_id)
+    if document is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+
+    storage_path = Path(document.storage_path)
+    if not storage_path.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document file missing")
+
+    preview_path = _get_document_preview_path(storage_path, document.mime_type)
+    headers = {"Content-Disposition": f'inline; filename="{preview_path.name}"'}
+    return FileResponse(path=str(preview_path), media_type="application/pdf", headers=headers)
 
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)

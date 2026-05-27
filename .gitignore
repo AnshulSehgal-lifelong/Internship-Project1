@@ -71,3 +71,6 @@ htmlcov
 # uploaded files
 storage
 resumes
+
+# scripts
+scripts

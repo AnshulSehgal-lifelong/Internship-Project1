@@ -28,7 +28,7 @@ def create_embedding(text: str, task_type: str) -> list[float]:
         contents=text,
         config=types.EmbedContentConfig(
             task_type=task_type,
-            output_dimensionality=settings.rag_embedding_dimensions,
+            output_dimensionality=settings.rag_embedding_dimensions, # 768 
         ),
     )
 
@@ -48,8 +48,10 @@ def create_embedding(text: str, task_type: str) -> list[float]:
 
 
 def create_document_embedding(text: str) -> list[float]:
+    """Create an embedding for a document chunk."""
     return create_embedding(text=text, task_type="retrieval_document")
 
 
 def create_query_embedding(text: str) -> list[float]:
+    """Create an embedding for a user query."""
     return create_embedding(text=text, task_type="retrieval_query")

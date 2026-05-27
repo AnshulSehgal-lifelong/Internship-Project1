@@ -18,6 +18,7 @@ import { useParams, useRouter } from "next/navigation";
 import { AnimatePresence } from "framer-motion";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import FilePreviewModal from "@/components/FilePreviewModal";
 import AddEmployeePanel, {
   AddEmployeeForm,
   DepartmentRecord,
@@ -176,77 +177,6 @@ function DetailRow({
       ) : (
         <p className="mt-1.5 text-sm text-muted-foreground/50">—</p>
       )}
-    </div>
-  );
-}
-
-function ResumePreviewModal({
-  fileName,
-  previewUrl,
-  isLoading,
-  error,
-  onClose,
-}: {
-  fileName: string;
-  previewUrl: string | null;
-  isLoading: boolean;
-  error: string | null;
-  onClose: () => void;
-}) {
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-md"
-      onClick={onClose}
-    >
-      <div
-        className="flex w-full max-w-5xl max-h-[90vh] flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Modal header */}
-        <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <FileText size={15} />
-            </div>
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-                Resume preview
-              </p>
-              <p className="text-sm font-semibold">{fileName}</p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            aria-label="Close preview"
-            className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-          >
-            <X size={16} />
-          </button>
-        </div>
-
-        {/* Modal body */}
-        <div className="flex-1 overflow-hidden bg-secondary/20 p-5">
-          {isLoading ? (
-            <div className="flex h-40 items-center justify-center gap-2.5 text-sm text-muted-foreground">
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-              Loading preview…
-            </div>
-          ) : previewUrl ? (
-            <iframe
-              title="Resume preview"
-              src={previewUrl}
-              className="h-full min-h-[75vh] w-full rounded-xl border border-border bg-background"
-            />
-          ) : (
-            <div className="flex h-40 flex-col items-center justify-center gap-2 text-center">
-              <FileText size={24} className="text-muted-foreground opacity-30" />
-              <p className="text-sm text-muted-foreground">
-                {error ?? "Preview unavailable for this file type."}
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
     </div>
   );
 }
@@ -651,7 +581,8 @@ export default function Applications() {
 
       {/* Resume preview modal */}
       {isPreviewOpen && (
-        <ResumePreviewModal
+        <FilePreviewModal
+          title="Resume preview"
           fileName={selected?.resume_original_name ?? ""}
           previewUrl={resumePreviewUrl}
           isLoading={isPreviewLoading}

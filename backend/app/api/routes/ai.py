@@ -128,8 +128,7 @@ async def chat(payload: ChatRequest, db: AsyncSession = Depends(get_db)) -> Stre
                     logger.exception("Gemini stream failed after starting")
                     raise
                 logger.warning("Gemini unavailable, falling back to Ollama: %s", exc)
-
-        # yield from _stream_ollama(messages_for_model, prompt)
+        yield from _stream_ollama(messages_for_model, prompt)
 
     return StreamingResponse(
         stream_reply(),
