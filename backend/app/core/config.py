@@ -5,6 +5,7 @@ import os
 load_dotenv()
 
 class Settings(BaseSettings):
+    """Application configuration loaded from environment variables."""
     app_name: str = os.getenv("APP_NAME", "TalentFlow API")
     api_v1_prefix: str = "/api"
     gemini_api_key: str | None = os.getenv("GEMINI_API_KEY")
@@ -31,3 +32,4 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+"""Centralized application configuration loaded from environment variables."""

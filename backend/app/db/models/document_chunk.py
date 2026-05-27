@@ -5,7 +5,7 @@ import uuid
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import TSVECTOR, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -19,6 +19,8 @@ class DocumentChunk(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
 
     full_text: Mapped[str] = mapped_column(Text, nullable=False)
+
+    search_vector: Mapped[str | None] = mapped_column(TSVECTOR, nullable=True)
 
     embedding: Mapped[list[float]] = mapped_column(Vector(768), nullable=False)
 
