@@ -6,7 +6,6 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 
-
 class JobApplicationStatus(str, enum.Enum):
     pending = "pending"
     selected = "selected"
@@ -24,6 +23,7 @@ class JobApplication(Base):
     github_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
     linkedin_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
     portfolio_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    address: Mapped[str | None] = mapped_column(String(255), nullable=True)
     resume_path: Mapped[str] = mapped_column(String(1024), nullable=False)
     resume_original_name: Mapped[str] = mapped_column(String(255), nullable=False)
     resume_mime_type: Mapped[str] = mapped_column(String(120), nullable=False)

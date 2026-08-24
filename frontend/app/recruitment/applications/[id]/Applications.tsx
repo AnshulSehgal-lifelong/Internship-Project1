@@ -9,6 +9,7 @@ import {
   FileText,
   Mail,
   Phone,
+  RefreshCw,
   User,
   UserCheck,
   UserX,
@@ -43,6 +44,16 @@ interface JobApplicationRecord {
   selected_at: string | null;
   rejected_at: string | null;
   created_at: string;
+}
+
+interface RankedCandidate {
+  application_id: number;
+  full_name: string;
+  email: string;
+  phone: string;
+  resume_original_name: string;
+  text_score: number;
+  semantic_score: number;
 }
 
 interface JobOpeningRecord {
@@ -95,10 +106,12 @@ function ApplicantRow({
   application,
   isSelected,
   onSelect,
+  score,
 }: {
   application: JobApplicationRecord;
   isSelected: boolean;
   onSelect: () => void;
+  score?: { text_score: number; semantic_score: number };
 }) {
   return (
     <button
@@ -123,6 +136,11 @@ function ApplicantRow({
         <p className="mt-0.5 truncate text-xs text-muted-foreground">{application.email}</p>
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1.5">
+        {score && (
+          <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+            {Math.round(score.semantic_score * 100)} / {Math.round(score.text_score * 100)}
+          </span>
+        )}
         <StatusBadge status={application.status} />
         <ChevronRight
           size={13}
@@ -196,6 +214,12 @@ export default function Applications() {
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [decisionError, setDecisionError] = React.useState<string | null>(null);
+  const [rankedCandidates, setRankedCandidates] = React.useState<RankedCandidate[] | null>(null);
+  const [lastRankedAt, setLastRankedAt] = React.useState<string | null>(null);
+  const [rankingError, setRankingError] = React.useState<string | null>(null);
+  const [isRanking, setIsRanking] = React.useState(false);
+  const [explanation, setExplanation] = React.useState<string | null>(null);
+  const [isExplaining, setIsExplaining] = React.useState(false);
 
   // ─── Resume preview state ─────────────────────────────────────────────────
   const [isPreviewOpen, setIsPreviewOpen] = React.useState(false);
@@ -306,6 +330,37 @@ export default function Applications() {
     }
   };
 
+  const handleRankCandidates = async () => {
+    if (!jobId || Number.isNaN(jobId)) return;
+    setIsRanking(true);
+    setRankingError(null);
+    try {
+      const response = await api.post<{ ranked: RankedCandidate[]; rejected_count: number }>(`/job-openings/${jobId}/rank`, {});
+      setRankedCandidates(response.ranked ?? []);
+      setLastRankedAt(new Date().toISOString());
+      await loadApplications();
+    } catch (err) {
+      console.error("Ranking failed:", err);
+      setRankingError("Could not rank candidates right now.");
+    } finally {
+      setIsRanking(false);
+    }
+  };
+
+  const handleExplainCandidate = async () => {
+    if (!selected) return;
+    setIsExplaining(true);
+    try {
+      const response = await api.get<{ explanation: string }>(`/job-openings/applications/${selected.id}/explanation`);
+      setExplanation(response.explanation ?? null);
+    } catch (err) {
+      console.error("Explanation failed:", err);
+      setExplanation("Could not generate an explanation right now.");
+    } finally {
+      setIsExplaining(false);
+    }
+  };
+
   // ─── Add employee handlers ────────────────────────────────────────────────
 
   const openAddEmployee = () => {
@@ -360,6 +415,22 @@ export default function Applications() {
     rejected: applications.filter((a) => a.status === "rejected").length,
   }), [applications]);
 
+  const orderedApplications = React.useMemo(() => {
+    if (!rankedCandidates || rankedCandidates.length === 0) {
+      return applications;
+    }
+
+    const rankIndex = new Map(rankedCandidates.map((candidate, index) => [candidate.application_id, index]));
+    return [...applications].sort((left, right) => {
+      const leftIndex = rankIndex.get(left.id);
+      const rightIndex = rankIndex.get(right.id);
+      if (leftIndex === undefined && rightIndex === undefined) return 0;
+      if (leftIndex === undefined) return 1;
+      if (rightIndex === undefined) return -1;
+      return leftIndex - rightIndex;
+    });
+  }, [applications, rankedCandidates]);
+
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
@@ -382,6 +453,26 @@ export default function Applications() {
             <ArrowLeft size={15} />
             Back to openings
           </button>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-card px-5 py-4 shadow-sm">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Ranking</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {lastRankedAt ? `Last ranked ${new Date(lastRankedAt).toLocaleString()}` : "Rank candidates on demand using a text-first gate."}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            {rankingError && <span className="text-sm text-destructive">{rankingError}</span>}
+            <button
+              onClick={handleRankCandidates}
+              disabled={isRanking || isLoading || !applications.length}
+              className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-md shadow-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <RefreshCw size={15} className={isRanking ? "animate-spin" : ""} />
+              {isRanking ? "Ranking…" : "Re-rank candidates"}
+            </button>
+          </div>
         </div>
 
         {/* Stats row */}
@@ -428,7 +519,9 @@ export default function Applications() {
                   <p className="text-sm font-medium">{error}</p>
                 </div>
               ) : applications.length > 0 ? (
-                applications.map((application) => (
+                orderedApplications.map((application) => {
+                  const rankInfo = rankedCandidates?.find((candidate) => candidate.application_id === application.id);
+                  return (
                   <ApplicantRow
                     key={application.id}
                     application={application}
@@ -437,8 +530,10 @@ export default function Applications() {
                       setSelected(application);
                       setDecisionError(null);
                     }}
+                    score={rankInfo ? { text_score: rankInfo.text_score, semantic_score: rankInfo.semantic_score } : undefined}
                   />
-                ))
+                  );
+                })
               ) : (
                 <div className="flex flex-col items-center justify-center py-16 text-center">
                   <FileText size={28} className="mb-2 text-muted-foreground opacity-20" />
@@ -540,6 +635,14 @@ export default function Applications() {
                 {/* Decision actions */}
                 <div className="flex flex-wrap items-center gap-3 border-t border-border px-6 py-5">
                   <button
+                    onClick={handleExplainCandidate}
+                    disabled={isExplaining}
+                    className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <FileText size={15} />
+                    {isExplaining ? "Generating…" : "Why fit?"}
+                  </button>
+                  <button
                     onClick={openAddEmployee}
                     disabled={selected.status === "selected"}
                     className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
@@ -563,6 +666,13 @@ export default function Applications() {
                     </div>
                   )}
                 </div>
+
+                {explanation && (
+                  <div className="border-t border-border px-6 py-5">
+                    <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Fit explanation</p>
+                    <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{explanation}</p>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="flex h-full min-h-72 flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-card p-8 text-center">

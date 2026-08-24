@@ -12,6 +12,7 @@ class JobApplicationRead(ORMBaseModel):
     github_url: str | None = None
     linkedin_url: str | None = None
     portfolio_url: str | None = None
+    address: str | None = None
     resume_original_name: str
     resume_mime_type: str
     resume_size_bytes: int

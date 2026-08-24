@@ -35,6 +35,7 @@ interface ApplicationForm {
   githubUrl: string;
   linkedinUrl: string;
   portfolioUrl: string;
+  address : string;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -46,6 +47,7 @@ const EMPTY_FORM: ApplicationForm = {
   githubUrl: "",
   linkedinUrl: "",
   portfolioUrl: "",
+  address: "",
 };
 
 const PERKS = [
@@ -204,6 +206,7 @@ export default function Jobs() {
       if (form.githubUrl) formData.append("github_url", form.githubUrl);
       if (form.linkedinUrl) formData.append("linkedin_url", form.linkedinUrl);
       if (form.portfolioUrl) formData.append("portfolio_url", form.portfolioUrl);
+      if (form.address) formData.append("address", form.address);
       formData.append("resume", resumeFile);
 
       await api.upload(`/job-openings/${selectedOpening.id}/apply`, formData);
@@ -434,6 +437,18 @@ export default function Jobs() {
                             value={form.linkedinUrl}
                             onChange={handleChange("linkedinUrl")}
                             placeholder="https://linkedin.com/in/username"
+                            className={inputCls}
+                          />
+                        </div>
+                      </FormField>
+
+                      <FormField label="Address" icon={<MapPin size={11} />} required>
+                        <div className={inputWrapCls}>
+                          <MapPin size={14} className="shrink-0 text-muted-foreground" />
+                          <input
+                            value={form.address}
+                            onChange={handleChange("address")}
+                            placeholder="Your address here"
                             className={inputCls}
                           />
                         </div>

@@ -32,7 +32,6 @@ async def general_exception_handler(request: Request, exc: Exception):
 
 app.include_router(api_router, prefix=settings.api_v1_prefix)
 
-
 @app.get("/")
 async def root() -> dict[str, str]:
     return {"status": "ok", "app": settings.app_name}
